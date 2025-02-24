@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "jpgovsummary"
+version = "0.1.0"
+description = "Tools for gov.jp documents"
+authors = ["Miki Yutani <mkyutani@gmail.com>"]
+license = "LICENSE"
+readme = "README.md"
+homepage = "https://github.com/mkyutani/jpgovsummary"
+repository = "https://github.com/mkyutani/jpgovsummary"
+keywords = ["government", "japan", "summary"]
+packages = [{include = "jpgovsummary", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+beautifulsoup4 = "^4.12.3"
+python-dotenv = "^1.0.1"
+requests = "^2.32.3"
+pytest = "^8.3.4"
+openai = "^1.63.2"
+langchain-openai = "^0.3.6"
+langchain-community = "^0.3.18"
+langgraph = "^0.2.74"
+firecrawl-py = "^1.12.0"
+
+[tool.poetry.scripts]
+jpgovsummary = "jpgovsummary.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
