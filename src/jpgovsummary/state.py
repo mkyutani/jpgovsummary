@@ -10,4 +10,3 @@ class State(TypedDict):
     number: str = None
     date: str = None
     url: str = None
-    overview: str = None

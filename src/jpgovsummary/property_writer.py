@@ -1,4 +1,5 @@
 import json
+import re
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
@@ -23,8 +24,8 @@ class PropertyWriter(Agent):
             {content}
 
             ### 制約条件
-            ・改行はおこなわず、まとめは1行にまとめる。
             ・回数と開催日がない場合は記載する必要がない。
+            ・回数がなく「とりまとめ」や「報告書」などの場合は「number」に「とりまとめ」や「報告書」を記載する。
             ・「timestamp」は開催日ではない。
 
             ### 出力形式
@@ -32,8 +33,7 @@ class PropertyWriter(Agent):
                 "title": "会議タイトル",
                 "number": "回数",
                 "date": "開催日",
-                "url": "会議URL",
-                "overview": "要旨"
+                "url": "会議URL"
             }}
         ''')
         prompt = ChatPromptTemplate.from_messages(
@@ -45,5 +45,9 @@ class PropertyWriter(Agent):
 
         chain = prompt | self.llm()
         result = chain.invoke(state["messages"], Config().get())
-        output = json.loads(result.content)
+        content = result.content
+        content = re.sub(r'\s+', ' ', content)
+        content = re.sub(r'^.*{', '{', content)
+        content = re.sub(r'}.*$', '}', content)
+        output = json.loads(content)
         return {**output, 'messages': [result]}

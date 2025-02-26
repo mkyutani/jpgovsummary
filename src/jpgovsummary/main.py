@@ -16,15 +16,13 @@ from .property_writer import PropertyWriter
 from .reporter import Reporter
 from .state import State
 
-def setup():
+def setup() -> None:
     signal.signal(signal.SIGINT, lambda num, frame: sys.exit(1))
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=False)
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', line_buffering=False)
 
-def route_tools(
-    state: State,
-):
+def route_tools(state: State) -> str:
     if isinstance(state, list):
         ai_message = state[-1]
     elif messages := state.get('messages', []):
