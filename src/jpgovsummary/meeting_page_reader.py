@@ -1,6 +1,6 @@
+import requests
 import sys
 
-from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
@@ -18,14 +18,23 @@ class MeetingPageReader(Agent):
         super().__init__()
 
     def load(self, url: str) -> str:
-        loader = AsyncHtmlLoader(url)
-        pages = []
-        for doc in loader.lazy_load():
-            pages.append(doc)
+        headers = { 'Cache-Control': 'no-cache', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36' }
 
-        html = '\n'.join([page.page_content for page in pages])
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+        except Exception as e:
+            print(str(e), file=sys.stderr)
+            return []
 
-        return html
+        if res.status_code >= 400:
+            message = ' '.join([str(res.status_code), res.text if res.text is not None else ''])
+            print(f'{message} ', file=sys.stderr)
+            return []
+
+        res.encoding = res.apparent_encoding
+        text = res.text
+
+        return text
 
     def think(self, state: State) -> dict:
         system_prompt = SystemMessagePromptTemplate.from_template('あなたは優秀な調査員です。会議のHTML文書を読み込んで概要を作成します。')
