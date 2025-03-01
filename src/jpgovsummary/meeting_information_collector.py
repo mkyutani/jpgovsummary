@@ -1,45 +1,38 @@
-import json
 import os
+import requests
 import sys
 from urllib.parse import urljoin
+
 from langchain_core.tools import tool
-import requests
 
-from .agent import Agent
+@tool
+def meeting_information_collector(uuid: str) -> str:
+    '''
+    ## 会議情報収集ツール
 
-class MeetingInformationCollector(Agent):
+    Sitewatcherを利用して会議のUUIDから会議の情報を収集するためのツールです。
 
-    def __init__(self) -> None:
-        super().__init__()
+    Args:
+        uuid (str): 会議のUUID
 
-    @tool
-    def tool(uuid: str) -> dict:
-        '''
-        ## 会議情報収集ツール
+    Returns:
+        str: 会議の情報
+    '''
 
-        Sitewatcherを利用して会議のUUIDから会議の情報を収集するためのツールです。
+    print('meeting_information_collector', file=sys.stderr)
 
-        Args:
-            uuid (str): 会議のUUID
+    api = os.environ.get('SW2_SERVER') or 'http://localhost:18085'
+    headers = { 'Cache-Control': 'no-cache' }
+    query = urljoin(api, f'/api/v1/resources/{uuid}')
 
-        Returns:
-            str: 会議の情報
-        '''
+    res = None
+    try:
+        res = requests.get(query, headers=headers)
+    except Exception as e:
+        return {'error': str(e)}
 
-        print('meeting_information_collector', file=sys.stderr)
+    if res.status_code >= 400:
+        message = ' '.join([str(res.status_code), res.text if res.text is not None else ''])
+        return {'error': message}
 
-        api = os.environ.get('SW2_SERVER') or 'http://localhost:18085'
-        headers = { 'Cache-Control': 'no-cache' }
-        query = urljoin(api, f'/api/v1/resources/{uuid}')
-
-        res = None
-        try:
-            res = requests.get(query, headers=headers)
-        except Exception as e:
-            return {'error': str(e)}
-
-        if res.status_code >= 400:
-            message = ' '.join([str(res.status_code), res.text if res.text is not None else ''])
-            return {'error': message}
-
-        return res.text
+    return res.text

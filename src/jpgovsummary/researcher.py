@@ -7,15 +7,13 @@ from langchain_core.prompts import (
 
 from .agent import Agent
 from .config import Config
-from .meeting_information_collector import MeetingInformationCollector
+from .meeting_information_collector import meeting_information_collector
 from .state import State
 
 class Researcher(Agent):
 
-    def __init__(self, uuid: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.tools = [MeetingInformationCollector.tool]
-        self.uuid = uuid
 
     def think(self, state: State) -> dict:
         system_prompt = SystemMessagePromptTemplate.from_template('あなたは優秀な調査員です。会議の情報を収集します。')
@@ -32,6 +30,6 @@ class Researcher(Agent):
                 user_prompt
             ]
         )
-        chain = prompt | self.llm().bind_tools(tools=self.tools)
+        chain = prompt | self.llm().bind_tools(tools=[meeting_information_collector])
         result = chain.invoke(state["messages"], Config().get())
         return {'messages': [result]}

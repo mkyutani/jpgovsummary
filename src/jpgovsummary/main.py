@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from .config import Config
-from .meeting_information_collector import MeetingInformationCollector
+from .meeting_information_collector import meeting_information_collector
 from .meeting_page_reader import MeetingPageReader
 from .property_formatter import PropertyFormatter
 from .researcher import Researcher
@@ -47,9 +47,8 @@ def main() -> int:
 
     graph = StateGraph(State)
 
-    graph.add_node('researcher', Researcher(uuid).node)
-    graph.add_node('meeting_information_collector', ToolNode(tools=[MeetingInformationCollector.tool]))
-#    graph.add_node('meeting_information_collector', ToolNode(tools=[meeting_information_collector]))
+    graph.add_node('researcher', Researcher().node)
+    graph.add_node('meeting_information_collector', ToolNode(tools=[meeting_information_collector]))
     graph.add_node('property_formatter', PropertyFormatter().node)
     graph.add_node('meeting_page_reader', MeetingPageReader().node)
 
