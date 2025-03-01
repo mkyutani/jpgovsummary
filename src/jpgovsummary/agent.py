@@ -1,7 +1,10 @@
 import os
+import sys
 
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
+
+from .state import State
 
 class Agent:
 
@@ -23,7 +26,9 @@ class Agent:
     def llm(self) -> ChatOpenAI:
         return ChatOpenAI(model="gpt-4o-mini")
 
-    def node(self, placeholder: dict) -> str:
-        chain = self.prompt() | ChatOpenAI(model="gpt-4o-mini").with_structured_output(self.structure())
-        result = chain.invoke(placeholder)
-        return result
+    def think(self) -> dict:
+        raise NotImplementedError()
+
+    def node(self, state: State) -> dict:
+        print(f'{self.__class__.__name__}', file=sys.stderr)
+        return self.think(state)

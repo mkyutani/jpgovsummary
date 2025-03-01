@@ -1,7 +1,6 @@
-import os
-import requests
+import sys
 
-from langchain_community.document_loaders.firecrawl import FireCrawlLoader
+from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
@@ -17,28 +16,22 @@ class MeetingPageReader(Agent):
 
     def __init__(self) -> None:
         super().__init__()
-        self.firecrawl_api_key = os.environ.get('FIRECRAWL_API_KEY')
 
-    def load(self, url: str):
-        loader = FireCrawlLoader(
-            api_key=self.firecrawl_api_key,
-            url=url,
-            mode="scrape"
-        )
-
+    def load(self, url: str) -> str:
+        loader = AsyncHtmlLoader(url)
         pages = []
         for doc in loader.lazy_load():
             pages.append(doc)
 
-        markdown = '\n'.join([page.page_content for page in pages])
+        html = '\n'.join([page.page_content for page in pages])
 
-        return markdown
+        return html
 
-    def node(self, state: State) -> str:
-        system_prompt = SystemMessagePromptTemplate.from_template('あなたは優秀な調査員です。会議のマークダウン文書を読み込んで概要を作成します。')
+    def think(self, state: State) -> dict:
+        system_prompt = SystemMessagePromptTemplate.from_template('あなたは優秀な調査員です。会議のHTML文書を読み込んで概要を作成します。')
         assistant_prompt = AIMessagePromptTemplate.from_template(
             '''
-            マークダウンを読んで会議の概要を作成してください。
+            HTMLを読んで会議の概要を作成してください。
 
             ### 概要作成の手順
             - 「議事」「議事次第」というセクションやリストがあれば、それをまとめる。
@@ -56,7 +49,7 @@ class MeetingPageReader(Agent):
             - 概要の中に、開催日、及び、URLの情報は含めない。
             - 200字以内、1センテンスのみ。
             ''')
-        user_prompt = HumanMessagePromptTemplate.from_template('{markdown}')
+        user_prompt = HumanMessagePromptTemplate.from_template('{html}')
         prompt = ChatPromptTemplate.from_messages(
             [
                 system_prompt,
@@ -64,7 +57,7 @@ class MeetingPageReader(Agent):
                 user_prompt
             ]
         )
-        markdown = self.load(state['url'])
+        html = self.load(state['url'])
         chain = prompt | self.llm()
-        result = chain.invoke({'messages': state['messages'], 'markdown': markdown}, Config().get())
+        result = chain.invoke({'messages': state['messages'], 'html': html}, Config().get())
         return {"messages": [result]}
