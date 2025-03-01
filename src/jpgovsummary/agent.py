@@ -1,4 +1,5 @@
 import os
+from pprint import pprint
 import sys
 
 from langchain_openai import ChatOpenAI
@@ -30,5 +31,5 @@ class Agent:
         raise NotImplementedError()
 
     def node(self, state: State) -> dict:
-        print(f'{self.__class__.__name__}', file=sys.stderr)
+        print(self.__class__.__name__, file=sys.stderr)
         return self.think(state)

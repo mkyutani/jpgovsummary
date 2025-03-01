@@ -63,20 +63,14 @@ def main() -> int:
     graph = graph.compile(checkpointer=memory)
     config = Config(uuid).get()
 
-    history = []
-    properties = {}
     events = graph.stream(
         {'messages': [HumanMessage(content=f'会議の番号は{uuid}です。概要を説明してください。')]},
         config
     )
     for event in events:
         for value in event.values():
-            history.append(value['messages'][-1].content)
-            if type(value['messages'][-1]) is ToolMessage:
-                props = json.loads(value['messages'][-1].content)
-                properties.update(props)
-
-    print(f'''{history[-1]}\n{properties['footer']}''')
+            last_message = value['messages'][-1]
+            last_message.pretty_print()
 
     if args.output_graph:
         graph.get_graph().draw_png(output_file_path=args.output_graph[0])

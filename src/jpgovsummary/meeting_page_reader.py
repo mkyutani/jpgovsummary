@@ -56,7 +56,13 @@ class MeetingPageReader(Agent):
             - 概要は文であるため、最後は句点「。」で終える。
             - 過去の会議であるため文末は過去形または体言止め。
             - 概要の中に、開催日、及び、URLの情報は含めない。
-            - 200字以内、1センテンスのみ。
+
+            ### 出力
+            - 会議の概要を200字以内、1センテンスで記述してください。
+            - 会議の概要のあとに以下を記載してください：{url}
+
+            ### 対象HTML
+            {html}
             ''')
         user_prompt = HumanMessagePromptTemplate.from_template('{html}')
         prompt = ChatPromptTemplate.from_messages(
@@ -68,5 +74,5 @@ class MeetingPageReader(Agent):
         )
         html = self.load(state['url'])
         chain = prompt | self.llm()
-        result = chain.invoke({'messages': state['messages'], 'html': html}, Config().get())
+        result = chain.invoke({'messages': state['messages'], 'url': state['url'], 'html': html}, Config().get())
         return {"messages": [result]}

@@ -42,8 +42,4 @@ class MeetingInformationCollector(Agent):
             message = ' '.join([str(res.status_code), res.text if res.text is not None else ''])
             return {'error': message}
 
-        resource = json.loads(res.text)
-        data = {}
-        for kv in resource['kv']:
-            data.update({kv['key']: kv['value']})
-        return data
+        return res.text
