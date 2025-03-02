@@ -74,5 +74,5 @@ class MeetingPageReader(Agent):
         )
         html = self.load(state['url'])
         chain = prompt | self.llm()
-        result = chain.invoke({'messages': state['messages'], 'url': state['url'], 'html': html}, Config().get())
-        return {"messages": [result]}
+        result = chain.invoke({'url': state['url'], 'html': html}, Config().get())
+        return {'messages': [result]}

@@ -6,6 +6,7 @@ from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate
 )
+from langgraph.types import Command
 
 from .agent import Agent
 from .config import Config
@@ -45,7 +46,7 @@ class PropertyFormatter(Agent):
         )
 
         chain = prompt | self.llm()
-        result = chain.invoke(state["messages"], Config().get())
+        result = chain.invoke(state['messages'], Config().get())
 
         content = result.content
         content = re.sub(r'\s+', ' ', content)
@@ -57,4 +58,11 @@ class PropertyFormatter(Agent):
             print(f'{type(e).__name__}: {e} {content}', file=sys.stderr)
             return {**state, 'messages': [result]}
 
-        return {**output, 'messages': [result]}
+        state_update = {
+            'title': output.get('title', ''),
+            'number': output.get('number', ''),
+            'date': output.get('date', ''),
+            'url': output.get('url', ''),
+            'messages': [result]
+        }
+        return Command(update=state_update)

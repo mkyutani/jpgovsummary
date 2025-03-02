@@ -41,6 +41,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='RAG-based web browsing agent')
     parser.add_argument('uuid', nargs=1, type=str, help='UUID of the meeting')
     parser.add_argument('--output-graph', nargs=1, type=str, default=None, help='Output file path for the graph')
+    parser.add_argument('--output-last-state', action='store_true', help='Print last state')
 
     args = parser.parse_args()
     uuid = args.uuid[0]
@@ -62,17 +63,18 @@ def main() -> int:
     graph = graph.compile(checkpointer=memory)
     config = Config(uuid).get()
 
-    events = graph.stream(
-        {'messages': [HumanMessage(content=f'会議の番号は{uuid}です。概要を説明してください。')]},
-        config
-    )
-    for event in events:
+    if args.output_graph:
+        graph.get_graph().draw_png(output_file_path=args.output_graph[0])
+
+    initial_message = {'messages': [HumanMessage(content=f'会議の番号は{uuid}です。概要を説明してください。')]}
+    for event in graph.stream(initial_message, config):
         for value in event.values():
             last_message = value['messages'][-1]
             last_message.pretty_print()
 
-    if args.output_graph:
-        graph.get_graph().draw_png(output_file_path=args.output_graph[0])
+    if args.output_last_state:
+        print('-' * 80, file=sys.stderr)
+        print(graph.get_state(config), file=sys.stderr)
 
     return 0
 
