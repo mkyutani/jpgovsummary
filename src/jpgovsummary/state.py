@@ -7,5 +7,5 @@ class State(TypedDict):
     messages: Annotated[list[str], add_messages] = []
     title: str = None
     number: str = None
-    date: str = None
     url: str = None
+    html: str = None
