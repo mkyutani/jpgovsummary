@@ -7,6 +7,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate
 )
+from langgraph.types import Command
 
 from .agent import Agent
 from .config import Config
@@ -58,8 +59,9 @@ class MeetingPageReader(Agent):
             - 概要の中に、開催日、及び、URLの情報は含めない。
 
             ### 出力
-            - 会議の概要を200字以内、1センテンスで記述してください。
-            - 会議の概要のあとに以下を記載してください：{url}
+            - 会議の概要を200字以内、1センテンスで記述する。
+            - 会議の概要のあとに以下を記載する：{url}
+            - 満足のできる概要を作成できなかった場合は、「概要不明」とだけ記載する。
 
             ### 対象HTML
             {html}
@@ -75,4 +77,4 @@ class MeetingPageReader(Agent):
         html = self.load(state['url'])
         chain = prompt | self.llm()
         result = chain.invoke({'url': state['url'], 'html': html}, Config().get())
-        return {'messages': [result]}
+        return Command(update={'messages': [result], 'html': html})
