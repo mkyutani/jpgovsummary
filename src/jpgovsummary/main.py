@@ -1,82 +1,93 @@
 import argparse
-import io
-import json
 import signal
 import sys
 
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from .config import Config
-from .meeting_information_collector import meeting_information_collector
-from .meeting_page_reader import MeetingPageReader
-from .property_formatter import PropertyFormatter
-from .researcher import Researcher
-from .state import State
+from . import Config, is_uuid, route_tools, State
+from .agents import (
+    BaseURLGenerator,
+    MeetingPageReader,
+    SummaryWriter
+)
+from .tools import (
+    html_loader,
+    meeting_url_collector,
+    pdf_loader
+)
 
 def setup() -> None:
     signal.signal(signal.SIGINT, lambda num, frame: sys.exit(1))
-    sys.stdin.reconfigure(encoding='utf-8')
-    sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
-    sys.stderr.reconfigure(encoding='utf-8', line_buffering=True)
-
-def route_tools(state: State) -> str:
-    if isinstance(state, list):
-        ai_message = state[-1]
-    elif messages := state.get('messages', []):
-        ai_message = messages[-1]
-    else:
-        raise ValueError(f'No messages found in input state to tool_edge: {state}')
-
-    if hasattr(ai_message, 'tool_calls') and len(ai_message.tool_calls) > 0:
-        return 'tools'
-
-    return 'next'
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
 def main() -> int:
     setup()
 
-    parser = argparse.ArgumentParser(description='RAG-based web browsing agent')
-    parser.add_argument('uuid', nargs=1, type=str, help='UUID of the meeting')
-    parser.add_argument('--output-graph', nargs=1, type=str, default=None, help='Output file path for the graph')
-    parser.add_argument('--output-last-state', action='store_true', help='Print last state')
+    parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
+    parser.add_argument("id", nargs='?', type=str, help="UUID or URL of the meeting")
+    parser.add_argument("--graph", nargs=1, type=str, default=None, help="Output file path for the graph")
+    parser.add_argument("--log", action="store_true", help="Print graph logs")
 
     args = parser.parse_args()
-    uuid = args.uuid[0]
 
     graph = StateGraph(State)
 
-    graph.add_node('researcher', Researcher().node)
-    graph.add_node('meeting_information_collector', ToolNode(tools=[meeting_information_collector]))
-    graph.add_node('property_formatter', PropertyFormatter().node)
-    graph.add_node('meeting_page_reader', MeetingPageReader().node)
+    graph.add_node("base_url_generator", BaseURLGenerator().node)
+    graph.add_node("meeting_url_collector", ToolNode(tools=[meeting_url_collector]))
+    graph.add_node("meeting_page_reader", MeetingPageReader().node)
+    graph.add_node("html_loader", ToolNode(tools=[html_loader]))
+    graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
+    graph.add_node("summary_writer", SummaryWriter().node)
 
-    graph.add_edge(START, 'researcher')
-    graph.add_conditional_edges('researcher', route_tools, {'tools': 'meeting_information_collector', 'next': 'property_formatter'})
-    graph.add_edge('meeting_information_collector', 'researcher')
-    graph.add_edge('property_formatter', 'meeting_page_reader')
-    graph.add_edge('meeting_page_reader', END)
+    graph.add_edge(START, "base_url_generator")
+    graph.add_conditional_edges("base_url_generator", route_tools, {"meeting_url_collector": "meeting_url_collector", "skip": "meeting_page_reader"})
+    graph.add_edge("meeting_url_collector", "meeting_page_reader")
+    graph.add_conditional_edges("meeting_page_reader", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
+    graph.add_edge("html_loader", "summary_writer")
+    graph.add_edge("pdf_loader", END)
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
-    config = Config(uuid).get()
+    config = Config(1).get()
 
-    if args.output_graph:
-        graph.get_graph().draw_png(output_file_path=args.output_graph[0])
+    if args.graph:
+        graph.get_graph().draw_png(output_file_path=args.graph[0])
+        return 0
 
-    initial_message = {'messages': [HumanMessage(content=f'会議の番号は{uuid}です。概要を説明してください。')]}
+    if args.id is None:
+        print("No meeting ID provided", file=sys.stderr)
+        return 1
+
+    if is_uuid(args.id):
+        human_message = f"会議のUUIDは\"{args.id}\"です。"
+    else:
+        human_message = f"会議のURLは\"{args.id}\"です。"
+
+    initial_message = {
+        "messages": [HumanMessage(content=human_message)]
+    }
     for event in graph.stream(initial_message, config):
-        for value in event.values():
-            last_message = value['messages'][-1]
-            last_message.pretty_print()
+        if args.log:
+            for value in event.values():
+                if isinstance(value["messages"], list):
+                    last_message = value["messages"][-1]
+                else:
+                    last_message = value["messages"]
+                last_message.pretty_print()
 
-    if args.output_last_state:
-        print('-' * 80, file=sys.stderr)
+    if args.log:
+        print("-" * 80, file=sys.stderr)
         print(graph.get_state(config), file=sys.stderr)
+
+    print("-" * 80, file=sys.stderr)
+    print(graph.get_state(config).values["messages"][-1].content)
 
     return 0
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

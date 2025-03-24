@@ -1,49 +1,29 @@
-import requests
-import sys
-
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate
+    HumanMessagePromptTemplate,
+    MessagesPlaceholder,
+    SystemMessagePromptTemplate
 )
-from langgraph.types import Command
 
 from .agent import Agent
-from .config import Config
-from .state import State
+from .. import Config, State
 
-class MeetingPageReader(Agent):
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def load(self, url: str) -> str:
-        headers = { 'Cache-Control': 'no-cache', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36' }
-
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-        except Exception as e:
-            print(str(e), file=sys.stderr)
-            return []
-
-        if res.status_code >= 400:
-            message = ' '.join([str(res.status_code), res.text if res.text is not None else ''])
-            print(f'{message} ', file=sys.stderr)
-            return []
-
-        res.encoding = res.apparent_encoding
-        text = res.text
-
-        return text
+class SummaryWriter(Agent):
 
     def think(self, state: State) -> dict:
-        system_prompt = SystemMessagePromptTemplate.from_template('あなたは優秀な調査員です。会議のHTML文書を読み込んで概要を作成します。')
-        assistant_prompt = AIMessagePromptTemplate.from_template(
-            '''
-            HTMLを読んで会議の概要を作成してください。
+        system_prompt = SystemMessagePromptTemplate.from_template("""
+            あなたは資料を読んで要約するエージェントです。
+        """)
+        assistant_prompt = AIMessagePromptTemplate.from_template("""
+            以下のURL及びHTMLから「会議名」、「回数(第○回)」、「議事概要」を抜き出し、出力例に沿ってまとめてください。
+
+            ### 出力例
+            医療介護総合確保促進会議(第21回)では、地域医療介護総合確保基金の執行状況、及び、医療法等の一部を改正する法律案(閣議決定)等が議論された。
+            https://...(URL)
 
             ### 概要作成の手順
+            - ユーザーから与えられた情報がJSONだけで文章になっていないなど不十分な場合、ツールを使ってまず議事概要を取得する必要がある。
             - 「議事」「議事次第」というセクションやリストがあれば、それをまとめる。
             - 議事次第がなければ「資料」の名前などから類推する。(参考資料は除く)
 
@@ -60,21 +40,16 @@ class MeetingPageReader(Agent):
 
             ### 出力
             - 会議の概要を200字以内、1センテンスで記述する。
-            - 会議の概要のあとに以下を記載する：{url}
+            - 語尾は「議論された。」「報告された。」「とりまとめられた」などから適切なものを選択する。
             - 満足のできる概要を作成できなかった場合は、「概要不明」とだけ記載する。
-
-            ### 対象HTML
-            {html}
-            ''')
-        user_prompt = HumanMessagePromptTemplate.from_template('{html}')
+        """)
         prompt = ChatPromptTemplate.from_messages(
             [
                 system_prompt,
                 assistant_prompt,
-                user_prompt
+                MessagesPlaceholder(variable_name="messages")
             ]
         )
-        html = self.load(state['url'])
-        chain = prompt | self.llm()
-        result = chain.invoke({'url': state['url'], 'html': html}, Config().get())
-        return Command(update={'messages': [result], 'html': html})
+        chain = prompt | self.llm
+        result = chain.invoke(state, Config().get())
+        return { "messages": [result] }

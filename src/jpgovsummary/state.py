@@ -1,11 +1,7 @@
 from typing import Annotated
 from typing_extensions import TypedDict
 
-from langgraph.graph.message import add_messages
+from langgraph.graph.message import AnyMessage, add_messages
 
 class State(TypedDict):
-    messages: Annotated[list[str], add_messages] = []
-    title: str = None
-    number: str = None
-    url: str = None
-    html: str = None
+    messages: Annotated[list[AnyMessage], add_messages]

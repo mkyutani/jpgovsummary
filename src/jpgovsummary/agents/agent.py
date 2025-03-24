@@ -1,14 +1,15 @@
 import os
 import sys
 
+from langchain_core.messages.ai import AIMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
-from .state import State
+from .. import log, State
 
 class Agent:
 
-    openai_api_key = os.environ.get('OPENAI_API_KEY')
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
     client = None
 
     @classmethod
@@ -23,6 +24,7 @@ class Agent:
     def __init__(self) -> None:
         Agent.initialize()
 
+    @property
     def llm(self) -> ChatOpenAI:
         return ChatOpenAI(model="gpt-4o-mini")
 
@@ -30,5 +32,5 @@ class Agent:
         raise NotImplementedError()
 
     def node(self, state: State) -> dict:
-        print(self.__class__.__name__, file=sys.stderr)
+        log(self.__class__.__name__)
         return self.think(state)
