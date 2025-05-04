@@ -10,10 +10,13 @@ class Model:
     def initialize(cls, model=None) -> None:
         if cls.model is None:
             if model is None:
-                cls.model = "o4-mini"
+                model_name = os.environ.get("OPENAI_MODEL_NAME")
+                if not model_name:
+                    raise ValueError("OPENAI_MODEL_NAME environment variable not set")
+                cls.model = model_name
             else:
                 cls.model = model
-        print(f"Use model {cls.model}", file=sys.stderr)
+            print(f"Use model {cls.model}", file=sys.stderr)
 
     def __init__(self, model=None) -> None:
         if Model.model is None:
