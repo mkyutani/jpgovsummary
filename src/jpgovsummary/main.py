@@ -9,9 +9,9 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from . import Config, is_uuid, route_tools, State
 from .agents import (
-    BaseURLGenerator,
-    MeetingPageReader,
-    SummaryWriter
+    base_url_generator,
+    meeting_page_reader,
+    summary_writer
 )
 from .tools import (
     html_loader,
@@ -37,13 +37,17 @@ def main() -> int:
 
     graph = StateGraph(State)
 
-    graph.add_node("base_url_generator", BaseURLGenerator().node)
+    # Add agent nodes
+    graph.add_node("base_url_generator", base_url_generator)
+    graph.add_node("meeting_page_reader", meeting_page_reader)
+    graph.add_node("summary_writer", summary_writer)
+
+    # Add tool nodes
     graph.add_node("meeting_url_collector", ToolNode(tools=[meeting_url_collector]))
-    graph.add_node("meeting_page_reader", MeetingPageReader().node)
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
-    graph.add_node("summary_writer", SummaryWriter().node)
 
+    # Define graph edges
     graph.add_edge(START, "base_url_generator")
     graph.add_conditional_edges("base_url_generator", route_tools, {"meeting_url_collector": "meeting_url_collector", "skip": "meeting_page_reader"})
     graph.add_edge("meeting_url_collector", "meeting_page_reader")

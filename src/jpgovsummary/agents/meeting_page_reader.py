@@ -1,37 +1,49 @@
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
-    HumanMessagePromptTemplate,
     MessagesPlaceholder,
     SystemMessagePromptTemplate
 )
 
-from .agent import Agent
-from .. import Config, State
+from .. import Config, State, log
+from ..utils import get_llm
 from ..tools import html_loader, pdf_loader
 
-class MeetingPageReader(Agent):
+def meeting_page_reader(state: State) -> dict:
+    """
+    ## Meeting Page Reader Agent
 
-    def think(self, state: State) -> dict:
-        system_prompt = SystemMessagePromptTemplate.from_template("""
-            あなたは会議のURLを読んでファイルの種類に応じたツールを特定するエージェントです。
-        """)
-        assistant_prompt = AIMessagePromptTemplate.from_template("""
-            ユーザから受け取ったURLの拡張子を見て、ルールに沿ってツールを選定します。
-            拡張子には、.pdfと.htmlがあります。
+    Read a meeting page and determine the appropriate tool to use based on the file type.
+    This agent decides whether to use HTML loader or PDF loader.
 
-            ### ルール
-            - 拡張子が.pdfである場合、PDF Loader Toolを指定します。
-            - 拡張子が.htmlである場合、HTML Loader Toolを返します。
-            - それ以外の場合、HTML Loader Toolを返します。
-        """)
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                system_prompt,
-                assistant_prompt,
-                MessagesPlaceholder(variable_name="messages")
-            ]
-        )
-        chain = prompt | self.llm.bind_tools([html_loader, pdf_loader])
-        result = chain.invoke(state, Config().get())
-        return { "messages": [result] }
+    Args:
+        state (State): The current state containing meeting information
+
+    Returns:
+        dict: A dictionary containing the tool selection message
+    """
+    log("meeting_page_reader")
+
+    llm = get_llm()
+    system_prompt = SystemMessagePromptTemplate.from_template("""
+        あなたは会議のURLを読んでファイルの種類に応じたツールを特定するエージェントです。
+    """)
+    assistant_prompt = AIMessagePromptTemplate.from_template("""
+        ユーザから受け取ったURLの拡張子を見て、ルールに沿ってツールを選定します。
+        拡張子には、.pdfと.htmlがあります。
+
+        ### ルール
+        - 拡張子が.pdfである場合、PDF Loader Toolを指定します。
+        - 拡張子が.htmlである場合、HTML Loader Toolを返します。
+        - それ以外の場合、HTML Loader Toolを返します。
+    """)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            system_prompt,
+            assistant_prompt,
+            MessagesPlaceholder(variable_name="messages")
+        ]
+    )
+    chain = prompt | llm.bind_tools([html_loader, pdf_loader])
+    result = chain.invoke(state, Config().get())
+    return { "messages": [result] } 
