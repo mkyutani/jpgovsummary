@@ -1,0 +1,19 @@
+{
+    "name": "Python Rules",
+    "description": "Rules for Python files",
+    "rules": [
+        {
+            "pattern": "*.py",
+            "actions": [
+                {
+                    "type": "format",
+                    "command": "black"
+                },
+                {
+                    "type": "lint",
+                    "command": "flake8"
+                }
+            ]
+        }
+    ]
+} 
