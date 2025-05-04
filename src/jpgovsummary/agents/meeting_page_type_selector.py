@@ -8,9 +8,9 @@ from langchain_core.prompts import (
 from .. import Config, Model, State, log
 from ..tools import html_loader, pdf_loader
 
-def meeting_page_reader(state: State) -> dict:
+def meeting_page_type_selector(state: State) -> dict:
     """
-    ## Meeting Page Reader Agent
+    ## Meeting Page Type Selector Agent
 
     Read a meeting page and determine the appropriate tool to use based on the file type.
     This agent decides whether to use HTML loader or PDF loader.
@@ -21,7 +21,7 @@ def meeting_page_reader(state: State) -> dict:
     Returns:
         dict: A dictionary containing the tool selection message
     """
-    log("meeting_page_reader")
+    log("meeting_page_type_selector")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

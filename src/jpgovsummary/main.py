@@ -8,15 +8,13 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from . import Config, is_uuid, Model, route_tools, State
+from . import Config, Model, route_tools, State
 from .agents import (
-    base_url_generator,
-    meeting_page_reader,
+    meeting_page_type_selector,
     overview_generator
 )
 from .tools import (
     html_loader,
-    meeting_url_collector,
     pdf_loader
 )
 
@@ -30,7 +28,7 @@ def main() -> int:
     setup()
 
     parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
-    parser.add_argument("id", nargs='?', type=str, help="UUID or URL of the meeting")
+    parser.add_argument("url", nargs='?', type=str, help="URL of the meeting")
     parser.add_argument("--graph", nargs=1, type=str, default=None, help="Output file path for the graph")
     parser.add_argument("--log", action="store_true", help="Print graph logs")
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
@@ -38,26 +36,25 @@ def main() -> int:
     args = parser.parse_args()
 
     # Initialize the default model
-    Model(args.model)
+    if args.model:
+        Model(args.model)
+    else:
+        Model()
 
     config = Config(1).get()
     graph = StateGraph(State)
 
     # Add agent nodes
-    graph.add_node("base_url_generator", base_url_generator)
-    graph.add_node("meeting_page_reader", meeting_page_reader)
+    graph.add_node("meeting_page_type_selector", meeting_page_type_selector)
     graph.add_node("overview_generator", overview_generator)
 
     # Add tool nodes
-    graph.add_node("meeting_url_collector", ToolNode(tools=[meeting_url_collector]))
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
 
     # Define graph edges
-    graph.add_edge(START, "base_url_generator")
-    graph.add_conditional_edges("base_url_generator", route_tools, {"meeting_url_collector": "meeting_url_collector", "skip": "meeting_page_reader"})
-    graph.add_edge("meeting_url_collector", "meeting_page_reader")
-    graph.add_conditional_edges("meeting_page_reader", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
+    graph.add_edge(START, "meeting_page_type_selector")
+    graph.add_conditional_edges("meeting_page_type_selector", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
     graph.add_edge("html_loader", "overview_generator")
     graph.add_edge("overview_generator", END)
     graph.add_edge("pdf_loader", END)
@@ -69,14 +66,11 @@ def main() -> int:
         graph.get_graph().draw_png(output_file_path=args.graph[0])
         return 0
 
-    if args.id is None:
-        print("No meeting ID provided", file=sys.stderr)
+    if args.url is None:
+        print("No meeting URL provided", file=sys.stderr)
         return 1
 
-    if is_uuid(args.id):
-        human_message = f"会議のUUIDは\"{args.id}\"です。"
-    else:
-        human_message = f"会議のURLは\"{args.id}\"です。"
+    human_message = f"会議のURLは\"{args.url}\"です。"
 
     initial_message = {
         "messages": [HumanMessage(content=human_message)]
