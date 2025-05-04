@@ -14,15 +14,16 @@ alwaysApply: false
 ### Step 2. コミットメッセージの作成
 
 - git diffで差分を確認
-- コミットメッセージを以下の条件で作成
+- コミットメッセージテキストを以下の条件で作成
   - 英語でかく
   - 20 words以内の簡潔な表現
 - 作成したコミットメッセージでよいかユーザに確認
-### Step 3. コミット
+
+### Step 3. git add and commit
 
 - git commit
 
-### Step 4. プッシュ
+### Step 4. git push
 
 - git push
 
