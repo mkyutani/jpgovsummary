@@ -1,3 +1,4 @@
+import json
 import os
 import requests
 from urllib.parse import urljoin
@@ -11,8 +12,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, State, log
-from ..utils import get_llm
+from .. import Config, Model, State, log
 
 @tool
 def meeting_url_collector(uuid: str) -> str:
@@ -29,7 +29,7 @@ def meeting_url_collector(uuid: str) -> str:
     """
     log("meeting_url_collector")
 
-    llm = get_llm()
+    llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたは会議のURLを収集するエージェントです。
     """)
@@ -65,7 +65,7 @@ def meeting_url_collector(state: State) -> dict:
     """
     log("meeting_url_collector")
 
-    llm = get_llm()
+    llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたは会議のURLを収集するエージェントです。
     """)

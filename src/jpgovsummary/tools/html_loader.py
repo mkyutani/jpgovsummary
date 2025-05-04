@@ -1,26 +1,21 @@
 import os
 
-from langchain_community.document_loaders.firecrawl import FireCrawlLoader
+from langchain_community.document_loaders.web_base import WebBaseLoader
 from langchain_core.tools import tool
 
 from .. import log
 
-firecrawl_api_key = os.environ.get('FIRECRAWL_API_KEY')
-
 def load(url: str) -> str:
-    loader = FireCrawlLoader(
-        api_key=firecrawl_api_key,
-        url=url,
-        mode="scrape"
+    loader = WebBaseLoader(
+        url,
+        requests_kwargs={
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+        }
     )
-
-    pages = []
-    for doc in loader.lazy_load():
-        pages.append(doc)
-
-    markdown = '\n'.join([page.page_content for page in pages])
-
-    return markdown
+    docs = loader.load()
+    return docs[0].page_content
 
 @tool
 def html_loader(html_url: str) -> str:
@@ -39,5 +34,4 @@ def html_loader(html_url: str) -> str:
     log("html_loader")
 
     markdown = load(html_url)
-
     return markdown

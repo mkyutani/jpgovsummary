@@ -5,8 +5,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, State, log
-from ..utils import get_llm
+from .. import Config, Model, State, log
 from ..tools import html_loader, pdf_loader
 
 def meeting_page_reader(state: State) -> dict:
@@ -24,7 +23,7 @@ def meeting_page_reader(state: State) -> dict:
     """
     log("meeting_page_reader")
 
-    llm = get_llm()
+    llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたは会議のURLを読んでファイルの種類に応じたツールを特定するエージェントです。
     """)

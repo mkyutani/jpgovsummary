@@ -5,8 +5,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, State, log
-from ..utils import get_llm
+from .. import Config, Model, State, log
 from ..tools.meeting_url_collector import meeting_url_collector
 
 def base_url_generator(state: State) -> dict:
@@ -24,7 +23,7 @@ def base_url_generator(state: State) -> dict:
     """
     log("base_url_generator")
 
-    llm = get_llm()
+    llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたは会議のURLを特定するエージェントです。
     """)

@@ -1,0 +1,33 @@
+import os
+import sys
+from langchain_openai import ChatOpenAI
+
+class Model:
+
+    model = None
+
+    @classmethod
+    def initialize(cls, model=None) -> None:
+        if cls.model is None:
+            if model is None:
+                cls.model = "o4-mini"
+            else:
+                cls.model = model
+        print(f"Use model {cls.model}", file=sys.stderr)
+
+    def __init__(self, model=None) -> None:
+        if Model.model is None:
+            Model.initialize(model)
+        self.model = Model.model
+
+    def llm(self) -> ChatOpenAI:
+        """
+        Get a ChatOpenAI instance with the model specified in the environment variable.
+
+        Returns:
+            ChatOpenAI: A configured ChatOpenAI instance.
+        """
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        return ChatOpenAI(api_key=api_key, model=self.model)
