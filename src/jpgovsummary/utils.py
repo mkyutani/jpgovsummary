@@ -18,4 +18,11 @@ def get_openai_client() -> OpenAI:
     return _openai_client
 
 def get_llm() -> ChatOpenAI:
-    return ChatOpenAI(model="gpt-4o-mini")
+    """
+    Get a ChatOpenAI instance with the model specified in the environment variable.
+
+    Returns:
+        ChatOpenAI: A configured ChatOpenAI instance.
+    """
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    return ChatOpenAI(model=model)

@@ -1,4 +1,5 @@
 import argparse
+import os
 import signal
 import sys
 
@@ -32,9 +33,14 @@ def main() -> int:
     parser.add_argument("id", nargs='?', type=str, help="UUID or URL of the meeting")
     parser.add_argument("--graph", nargs=1, type=str, default=None, help="Output file path for the graph")
     parser.add_argument("--log", action="store_true", help="Print graph logs")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="OpenAI model to use")
 
     args = parser.parse_args()
 
+    # Set the model in the environment
+    os.environ["OPENAI_MODEL"] = args.model
+
+    config = Config(1).get()
     graph = StateGraph(State)
 
     # Add agent nodes
@@ -57,7 +63,6 @@ def main() -> int:
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
-    config = Config(1).get()
 
     if args.graph:
         graph.get_graph().draw_png(output_file_path=args.graph[0])
