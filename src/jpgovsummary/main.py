@@ -11,7 +11,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from . import Config, Model, route_tools, State
 from .agents import (
     meeting_page_type_selector,
-    overview_generator
+    overview_generator,
+    summary_writer
 )
 from .tools import (
     html_loader,
@@ -47,7 +48,7 @@ def main() -> int:
     # Add agent nodes
     graph.add_node("meeting_page_type_selector", meeting_page_type_selector)
     graph.add_node("overview_generator", overview_generator)
-
+    graph.add_node("summary_writer", summary_writer)
     # Add tool nodes
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
@@ -56,7 +57,8 @@ def main() -> int:
     graph.add_edge(START, "meeting_page_type_selector")
     graph.add_conditional_edges("meeting_page_type_selector", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
     graph.add_edge("html_loader", "overview_generator")
-    graph.add_edge("overview_generator", END)
+    graph.add_edge("overview_generator", "summary_writer")
+    graph.add_edge("summary_writer", END)
     graph.add_edge("pdf_loader", END)
 
     memory = MemorySaver()
@@ -90,13 +92,12 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
-    meeting_title = final_state.values.get("meeting_title")
+    summary = final_state.values.get("summary")
 
-    print("-" * 80, file=sys.stderr)
-    if meeting_title:
-        print(meeting_title)
+    if summary:
+        print(summary)
     else:
-        print("会議の名称が見つかりませんでした。", file=sys.stderr)
+        print("No summary found", file=sys.stderr)
 
     return 0
 
