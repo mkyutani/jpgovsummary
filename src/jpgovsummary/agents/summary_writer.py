@@ -26,12 +26,34 @@ def summary_writer(state: State) -> dict:
         あなたは会議の内容を要約するエージェントです。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
-        会議の内容を要約します。
+        以下の条件に沿って、会議の内容を要約します。
 
-        ### 要約のルール
-        - 会議の内容を簡潔に要約します。
-        - 重要なポイントを箇条書きで示します。
-        - 会議の結論や決定事項があれば、それを明確に示します。
+        ## 条件
+        - 対象となっているHTMLを読み、議事もしくは議事次第に該当するセクション、会議資料に相当するリンクのファイル名から、議事内容を作成する。ただし、委員提出資料や参考資料の名称は要約の対象から除外する。
+        - 対象となっているHTMLから読み取れない内容は含んではならない。
+        - 以下の制約に従い、これまでに得られた議事内容を1文で簡潔にまとめる。
+
+        #### 制約事項
+        - 箇条書きや番号付き列挙にはしない。
+        - 文末は「です・ます調」ではなく「だ・である調」とする。
+        - これまでに得られた議事内容から読み取れない内容を含んではならない。
+
+        ## 出力形式
+        - 以下の形式を参考にして要約と対象URLを出力する。
+
+        ### 会議ページの場合
+
+        ```
+        〇〇〇会議(第×回)では、・・・・・・について議論された。
+        https://...
+        ```
+
+        ### 報告書ページの場合
+
+        ```
+        〇〇〇報告書は、・・・・・・。
+        https://...
+        ```
     """)
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -42,4 +64,4 @@ def summary_writer(state: State) -> dict:
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
-    return { "messages": [result] } 
+    return { "summary": result.content, "messages": [result] } 

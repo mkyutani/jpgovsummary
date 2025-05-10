@@ -6,3 +6,4 @@ from langgraph.graph.message import AnyMessage, add_messages
 class State(TypedDict):
     meeting_title: Optional[str]
     messages: Annotated[list[AnyMessage], add_messages]
+    summary: Optional[str]
