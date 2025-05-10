@@ -12,6 +12,7 @@ from . import Config, Model, route_tools, State
 from .agents import (
     meeting_page_type_selector,
     overview_generator,
+    report_enumerator,
     summary_writer
 )
 from .tools import (
@@ -49,6 +50,7 @@ def main() -> int:
     graph.add_node("meeting_page_type_selector", meeting_page_type_selector)
     graph.add_node("overview_generator", overview_generator)
     graph.add_node("summary_writer", summary_writer)
+    graph.add_node("report_enumerator", report_enumerator)
     # Add tool nodes
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
@@ -58,7 +60,8 @@ def main() -> int:
     graph.add_conditional_edges("meeting_page_type_selector", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
     graph.add_edge("html_loader", "overview_generator")
     graph.add_edge("overview_generator", "summary_writer")
-    graph.add_edge("summary_writer", END)
+    graph.add_edge("summary_writer", "report_enumerator")
+    graph.add_edge("report_enumerator", END)
     graph.add_edge("pdf_loader", END)
 
     memory = MemorySaver()
@@ -98,6 +101,13 @@ def main() -> int:
         print(summary)
     else:
         print("No summary found", file=sys.stderr)
+
+    reports = final_state.values.get("reports")
+    if reports:
+        for report in reports:
+            print(report["name"], report["url"])
+    else:
+        print("No reports found", file=sys.stderr)
 
     return 0
 
