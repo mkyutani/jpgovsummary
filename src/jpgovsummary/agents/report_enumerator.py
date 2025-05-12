@@ -12,11 +12,11 @@ def report_enumerator(state: State) -> State:
     """
     ## Report Enumerator Agent
 
-    Extract document URLs and their names from HTML content.
-    This agent identifies and lists all document links and their corresponding names in the HTML page.
+    Extract document URLs and their names from main content markdown.
+    This agent identifies and lists all document links and their corresponding names in the main content markdown.
 
     Args:
-        state (State): The current state containing HTML content
+        state (State): The current state containing main content markdown
 
     Returns:
         State: The updated state with extracted document information
@@ -26,18 +26,63 @@ def report_enumerator(state: State) -> State:
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=ReportList)
     system_prompt = SystemMessagePromptTemplate.from_template("""
-        あなたはHTMLを読んで報告書の内容をまとめる優秀な書記です。
+        あなたはメインコンテンツのマークダウンを読んでリンクを列挙し、そのリンクが関連資料であるか否かを判断する優秀なデータエンジニアです。
+        リンクが関連資料であるか否かの判断には、メインコンテンツのマークダウンの構造とコンテキストを注意深く分析します。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
-        指定されたHTMLから条件にあうリンクを特定し正確なURLにしてください。
-        回答形式に指定した項目以外は回答に含めないでください。
+        以下の手順で処理を行ってください。
 
-        ## 選定条件
+        ## 処理手順
+        Step 1. 指定されたメインコンテンツのマークダウンに含まれるすべてのリンクを抽出し、リンク先のURLとリンク先のテキストを取得します。
+        Step 2. 取得した各リンクについて、以下の判断基準に照らし合わせて関連資料であるか否かを判断します。
+        Step 3. 取得したすべてのリンクについて、リンク先のURLとリンク先のテキスト、及び、判断結果と判断理由を記述します。
 
-        - aタグである
-        - ページのヘッダ、フッタ、メニュー、パンくずリストではない
-        - youtube、adobe、NDL Warp(国立国会図書館インターネット資料収集保存事業)のリンクではない
-        - このページの趣旨である会議や報告の関連資料であり、一般的な資料ではない
+        ### Step 1. リンク先のURLとリンク先のテキストの取得                                                           
+        メインコンテンツのマークダウンのリンクをすべて抽出し、リンク先のURLとリンク先のテキストを取得します。
+        すべてのリンクを漏れなく抽出してください。
+        抽出したリンクは必ず出力に含めてください。
+
+        ### Step 2. 関連資料であるか否かの判断
+        取得した各リンクについて、以下の判断基準に照らし合わせて関連資料であるか否かを判断します。
+        各リンクについて、必ず以下の5つの基準を順番に確認してください：
+
+        1. リンク先が会議や報告の関連資料であるか
+           - 会議の議事録、報告書、資料などであれば関連資料
+           - 会議の開催案内、結果報告なども関連資料
+
+        2. リンク先が会議の議事録や報告書の本文であるか
+           - 議事録の本文、報告書の本文であれば関連資料
+           - 議事録や報告書の目次、索引なども関連資料
+
+        3. リンク先が会議の資料や補足資料であるか
+           - 会議で使用された資料、補足資料であれば関連資料
+           - 参考資料、追加資料なども関連資料
+
+        4. リンク先が一般的な資料でないか
+           - プライバシーポリシー、サイトマップ、youtube、adobe、NDL Warp(国立国会図書館インターネット資料収集保存事業)などは関連資料ではない
+           - 一般的な案内、お知らせなども関連資料ではない
+
+        5. ページのヘッダ、フッタ、メニュー、パンくずリストに含まれるリンクでないか
+           - ページの上部、下部、サイドバーなどに配置されたリンクは関連資料ではない
+           - ナビゲーション用のリンクは関連資料ではない
+
+        #### 判断の注意点
+        - リンクのテキストとURLの両方を確認し、コンテキストを考慮して判断してください
+        - リンクの階層構造や位置関係も判断の参考にしてください
+        - 判断理由は具体的に記述し、なぜそのリンクが資料として適切か/不適切かを説明してください
+        - 不確かな場合は、より厳密な判断をしてください
+
+        ### Step 3. 出力
+        取得したすべてのリンクについて、以下の情報を記述します：
+        - リンク先のURL
+        - リンク先のテキスト
+        - 関連資料であるか否かの判断結果
+        - 判断理由
+
+        #### 出力の注意点
+        - すべてのリンクを漏れなく出力してください
+        - リンクが相対的なパスである場合は、正確なURLに変換してください
+        - 判断結果がtrue/falseに関わらず、すべてのリンクについて判断理由を記述してください
 
         {format_instructions}
     """)

@@ -13,7 +13,8 @@ from .agents import (
     meeting_page_type_selector,
     overview_generator,
     report_enumerator,
-    summary_writer
+    summary_writer,
+    main_content_extractor
 )
 from .tools import (
     html_loader,
@@ -51,6 +52,7 @@ def main() -> int:
     graph.add_node("overview_generator", overview_generator)
     graph.add_node("summary_writer", summary_writer)
     graph.add_node("report_enumerator", report_enumerator)
+    graph.add_node("main_content_extractor", main_content_extractor)
     # Add tool nodes
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
@@ -59,7 +61,8 @@ def main() -> int:
     graph.add_edge(START, "meeting_page_type_selector")
     graph.add_conditional_edges("meeting_page_type_selector", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
     graph.add_edge("html_loader", "overview_generator")
-    graph.add_edge("overview_generator", "summary_writer")
+    graph.add_edge("overview_generator", "main_content_extractor")
+    graph.add_edge("main_content_extractor", "summary_writer")
     graph.add_edge("summary_writer", "report_enumerator")
     graph.add_edge("report_enumerator", END)
     graph.add_edge("pdf_loader", END)
@@ -104,8 +107,9 @@ def main() -> int:
 
     reports = final_state.values.get("reports")
     if reports:
+        reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
         for report in reports:
-            print(report["name"], report["url"])
+            print(report["name"], report["url"], report["is_document"], report["reason"])
     else:
         print("No reports found", file=sys.stderr)
 

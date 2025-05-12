@@ -11,7 +11,7 @@ def overview_generator(state: State) -> dict:
     """
     ## Overview Generator Agent
 
-    Extract meeting title and number from HTML content.
+    Extract meeting title and number from markdown content.
 
     Args:
         state (State): The current state containing meeting information
@@ -23,10 +23,10 @@ def overview_generator(state: State) -> dict:
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
-        あなたはHTMLを読んで会議内容をまとめる優秀な書記です。
-        ユーザから受け取ったHTMLを解析し、会議の名称と回数を特定します。
-        会議の名称は、HTMLタイトルやog:title、H1タグなどを参照して決定します。
-        また、パンくずリストや主催・事務局の情報も確認し、可能な限り詳細な会議名を特定します。
+        あなたはmarkdownを読んで会議内容をまとめる優秀な書記です。
+        ユーザから受け取ったmarkdownを解析し、会議の名称と回数を特定します。
+        会議の名称は、markdownの見出しや、タイトル、H1タグなどを参照して決定します。
+        また、ナビゲーターや主催・事務局の情報も確認し、可能な限り詳細な会議名を特定します。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
         以下の対象URLについて、会議の名称と回数(第〇回)を特定してください。
@@ -34,10 +34,10 @@ def overview_generator(state: State) -> dict:
         ## 制約事項
 
         - 対象URLを読み、会議の名称と回数(第〇回)を特定する。
-        - 会議の名称は、HTMLタイトルまたはog:titleを参照する。
+        - 会議の名称は、markdownの見出しやタイトルを参照する。
         - 主催・事務局の府省庁名もしくは審議会名がわかる場合は、これを追加する。
-        - パンくずリストなどから上位の委員会、研究名が読みとることができれば、これを追加する。
-        - H1タグにワーキンググループやサブワーキンググループの名称があれば、これを追加する。
+        - ナビゲーターなどから上位の委員会、研究名が読みとることができれば、これを追加する。
+        - ワーキンググループやサブワーキンググループの名称があれば、これを追加する。
         - 対象URLのページに含まれていない内容を含んではならない。
 
         ## 出力形式
