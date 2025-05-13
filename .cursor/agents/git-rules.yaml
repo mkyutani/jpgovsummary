@@ -34,6 +34,10 @@ rules:
     description: Standard workflow for commits
     steps:
       - check_status
+      - list_changes:
+          - new_files: "List all new files"
+          - modified_files: "List all modified files"
+          - deleted_files: "List all deleted files"
       - file_operations:
           - add_new_files: "Add all new files to staging"
           - add_modified_files: "Add all modified files to staging"

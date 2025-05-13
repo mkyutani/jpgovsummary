@@ -5,7 +5,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, Model, State, log
+from .. import Config, Model, State, logger
+from ..tools import html_loader, pdf_loader
 
 def main_content_extractor(state: State) -> dict:
     """
@@ -19,7 +20,7 @@ def main_content_extractor(state: State) -> dict:
     Returns:
         dict: A dictionary containing the extracted main content
     """
-    log("main_content_extractor")
+    logger.info("main_content_extractor")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

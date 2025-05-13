@@ -3,7 +3,7 @@ import requests
 from langchain_core.tools import tool
 from markitdown import MarkItDown
 
-from .. import log
+from .. import logger
 
 def load(url: str) -> str:
     """
@@ -36,7 +36,7 @@ def html_loader(html_url: str) -> str:
     Returns:
         str: markdown of the page
     """
-    log("html_loader")
+    logger.info("html_loader")
 
     markdown = load(html_url)
     return markdown

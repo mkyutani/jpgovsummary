@@ -94,7 +94,6 @@ def main() -> int:
 
     if args.log:
         print("-" * 80, file=sys.stderr)
-        print(graph.get_state(config), file=sys.stderr)
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
@@ -104,14 +103,6 @@ def main() -> int:
         print(summary)
     else:
         print("No summary found", file=sys.stderr)
-
-    reports = final_state.values.get("reports")
-    if reports:
-        reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
-        for report in reports:
-            print(report["name"], report["url"], report["is_document"], report["reason"])
-    else:
-        print("No reports found", file=sys.stderr)
 
     return 0
 

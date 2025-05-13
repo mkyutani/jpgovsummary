@@ -5,7 +5,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, Model, State, log
+from .. import Config, Model, State, logger
+from ..tools import html_loader, pdf_loader
 
 def overview_generator(state: State) -> dict:
     """
@@ -19,7 +20,7 @@ def overview_generator(state: State) -> dict:
     Returns:
         dict: A dictionary containing the extracted overview message
     """
-    log("overview_generator")
+    logger.info("overview_generator")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

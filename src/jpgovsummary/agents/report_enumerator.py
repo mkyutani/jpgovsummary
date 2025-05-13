@@ -6,7 +6,8 @@ from langchain_core.prompts import (
 )
 from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Config, Model, Report, ReportList, State, log
+from .. import Config, Model, Report, ReportList, State, logger
+from ..tools import html_loader, pdf_loader
 
 def report_enumerator(state: State) -> State:
     """
@@ -21,7 +22,7 @@ def report_enumerator(state: State) -> State:
     Returns:
         State: The updated state with extracted document information
     """
-    log("report_enumerator")
+    logger.info("report_enumerator")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=ReportList)
@@ -101,4 +102,13 @@ def report_enumerator(state: State) -> State:
         },
         Config().get()
     )
+
+    reports = result["reports"]
+    if not reports:
+        logger.info("No reports found")
+    else:
+        reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
+        for report in reports:
+            logger.info(f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}")
+
     return { **state, "reports": result["reports"] } 

@@ -2,6 +2,8 @@ import os
 import sys
 from langchain_openai import ChatOpenAI
 
+from .logger import logger
+
 class Model:
 
     model = None
@@ -16,7 +18,7 @@ class Model:
                 cls.model = model_name
             else:
                 cls.model = model
-            print(f"Use model {cls.model}", file=sys.stderr)
+            logger.info(f"Use model {cls.model}")
 
     def __init__(self, model=None) -> None:
         if Model.model is None:

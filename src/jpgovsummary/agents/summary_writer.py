@@ -5,7 +5,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, Model, State, log
+from .. import Config, Model, State, logger
+from ..tools import html_loader, pdf_loader
 
 def summary_writer(state: State) -> dict:
     """
@@ -19,7 +20,7 @@ def summary_writer(state: State) -> dict:
     Returns:
         dict: A dictionary containing the generated summary message
     """
-    log("summary_writer")
+    logger.info("summary_writer")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

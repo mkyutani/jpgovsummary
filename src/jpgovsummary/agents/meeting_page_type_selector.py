@@ -5,7 +5,7 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate
 )
 
-from .. import Config, Model, State, log
+from .. import Config, Model, State, logger
 from ..tools import html_loader, pdf_loader
 
 def meeting_page_type_selector(state: State) -> dict:
@@ -21,7 +21,7 @@ def meeting_page_type_selector(state: State) -> dict:
     Returns:
         dict: A dictionary containing the tool selection message
     """
-    log("meeting_page_type_selector")
+    logger.info("meeting_page_type_selector")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

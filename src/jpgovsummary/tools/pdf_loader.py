@@ -4,7 +4,7 @@ from urllib.parse import urljoin
 
 from langchain_core.tools import tool
 
-from .. import log
+from .. import logger
 
 @tool
 def pdf_loader(pdf_url: str) -> str:
@@ -20,6 +20,6 @@ def pdf_loader(pdf_url: str) -> str:
         str: markdown of the page
     """
 
-    log("html_loader_by_firecrawl")
+    logger.info("pdf_loader")
 
     return "Not implemented yet"
