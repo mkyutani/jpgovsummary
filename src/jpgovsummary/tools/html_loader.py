@@ -39,4 +39,6 @@ def html_loader(html_url: str) -> str:
     logger.info("html_loader")
 
     markdown = load(html_url)
+    logger.info(f"length: {len(markdown)}")
+
     return markdown

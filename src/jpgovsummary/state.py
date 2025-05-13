@@ -16,7 +16,7 @@ class ReportList(BaseModel):
 class State(TypedDict):
     main_content: Optional[str] = Field(description="The main content of the meeting extracted from markdown")
     markdown: Optional[str] = Field(description="The markdown content of the meeting")
-    meeting_title: Optional[str] = Field(description="The title of the meeting")
+    overview: Optional[str] = Field(description="The overview of the meeting, including the title and the URL")
     messages: Annotated[list[AnyMessage], add_messages] = Field(description="The messages of the conversation")
     reports: Optional[ReportList]
 #    reports: Optional[str] = Field(description="The reports of the meeting")

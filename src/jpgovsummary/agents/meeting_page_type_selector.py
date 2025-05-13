@@ -45,4 +45,10 @@ def meeting_page_type_selector(state: State) -> dict:
     )
     chain = prompt | llm.bind_tools([html_loader, pdf_loader])
     result = chain.invoke(state, Config().get())
+    tool_calls = result.additional_kwargs.get("tool_calls")
+    if len(tool_calls) > 0:
+        logger.info(f"tool: {tool_calls[0]['function']['name']}")
+    else:
+        logger.info("No tool calls found")
+        logger.debug(result)
     return { "messages": [result] } 

@@ -24,12 +24,12 @@ def main_content_extractor(state: State) -> dict:
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
-        あなたはmarkdownを読んでメインコンテンツを抽出する優秀なデータエンジニアです。
-        ユーザから受け取ったmarkdownを解析し、ヘッダ、フッタ、ナビゲーション、関連サイトに関するセクションを取り除きます。
+        あなたはマークダウンを読んでメインコンテンツを抽出する優秀なデータエンジニアです。
+        ユーザから受け取ったマークダウンを解析し、ヘッダ、フッタ、ナビゲーション、関連サイトに関するセクションを取り除きます。
         メインコンテンツは、会議の議事録や報告書の本文、資料の内容などです。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
-        以下のmarkdownから、メインコンテンツを抽出してください。
+        マークダウンから、メインコンテンツを抽出してください。
 
         ## 制約事項
 
@@ -42,9 +42,9 @@ def main_content_extractor(state: State) -> dict:
           - その他の補足的な情報
 
         - 以下のセクションは保持してください：
+          - 会議、報告書、とりまとめ、案内、お知らせ、募集など、ページの概要に関連するセクション
           - 会議の議事録や報告書の本文
-          - 資料の内容
-          - 会議の議題や議事
+          - 会議の議題や議事録の概要
           - 会議の決定事項や結論
           - その他の重要な情報
 
@@ -55,8 +55,8 @@ def main_content_extractor(state: State) -> dict:
           - 強調や引用
 
         ## 出力形式
-        - 抽出したメインコンテンツをmarkdown形式で出力してください。
-        - 不要なセクションを削除した後の、整理されたmarkdownを返してください。
+        - 抽出したメインコンテンツをマークダウン形式で出力してください
+        - 不要なセクションを削除した後の、整理されたマークダウンを返してください
     """)
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -67,4 +67,5 @@ def main_content_extractor(state: State) -> dict:
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
+    logger.info(f"length: {len(result.content)}")
     return { "main_content": result.content, "messages": [result] } 
