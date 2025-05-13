@@ -1,0 +1,69 @@
+name: git-execution-rules
+description: Rules for executing git commands in Cursor Agent
+
+rules:
+  - name: commit-message
+    description: Rules for git commit messages
+    constraints:
+      - language: english
+      - max_words: 20
+      - style: imperative
+      - format: single_sentence
+    prefixes:
+      - feat: New feature
+      - fix: Bug fix
+      - docs: Documentation changes
+      - refactor: Code refactoring
+      - chore: Maintenance tasks
+      - test: Adding or modifying tests
+
+  - name: branch-naming
+    description: Rules for git branch names
+    format: "{prefix}/{description}"
+    prefixes:
+      - feature
+      - bugfix
+      - hotfix
+      - release
+    constraints:
+      - lowercase
+      - hyphen_separated
+      - max_length: 50
+
+  - name: commit-workflow
+    description: Standard workflow for commits
+    steps:
+      - check_status
+      - file_operations:
+          - add_new_files: "Add all new files to staging"
+          - add_modified_files: "Add all modified files to staging"
+          - remove_deleted_files: "Remove all deleted files from git tracking"
+      - commit
+      - push
+    validation:
+      - no_uncommitted_changes
+      - meaningful_commit_message
+      - branch_up_to_date
+      - all_files_properly_staged:
+          - new_files_added
+          - modified_files_added
+          - deleted_files_removed
+
+  - name: merge-strategy
+    description: Rules for merging branches
+    strategies:
+      - squash: For feature branches
+      - merge: For release branches
+      - rebase: For keeping history clean
+    constraints:
+      - require_pull_request
+      - require_review
+      - no_conflicts
+
+  - name: tag-versioning
+    description: Rules for version tagging
+    format: "v{major}.{minor}.{patch}"
+    constraints:
+      - semantic_versioning
+      - annotated_tags
+      - push_tags 
