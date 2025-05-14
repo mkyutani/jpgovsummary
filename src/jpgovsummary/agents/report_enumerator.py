@@ -6,8 +6,7 @@ from langchain_core.prompts import (
 )
 from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Config, Model, Report, ReportList, State, logger
-from ..tools import html_loader, pdf_loader
+from .. import Config, Model, CandidateReportList, State, logger
 
 def report_enumerator(state: State) -> State:
     """
@@ -25,7 +24,7 @@ def report_enumerator(state: State) -> State:
     logger.info("report_enumerator")
 
     llm = Model().llm()
-    parser = JsonOutputParser(pydantic_object=ReportList)
+    parser = JsonOutputParser(pydantic_object=CandidateReportList)
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたはメインコンテンツのマークダウンを読んでリンクを列挙し、そのリンクが要約に対する関連資料であるか否かを判断する優秀なデータエンジニアです。
         リンクが関連資料であるか否かの判断には、メインコンテンツのマークダウンの構造とコンテキストを注意深く分析します。
@@ -111,4 +110,6 @@ def report_enumerator(state: State) -> State:
         for report in reports:
             logger.info(f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}")
 
-    return { **state, "reports": result["reports"] } 
+    reports = [report for report in result["reports"] if report["is_document"]]
+
+    return { **state, "candidate_reports": result["reports"] } 

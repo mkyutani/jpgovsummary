@@ -1,0 +1,80 @@
+from langchain_core.prompts import (
+    AIMessagePromptTemplate,
+    ChatPromptTemplate,
+    MessagesPlaceholder,
+    SystemMessagePromptTemplate
+)
+from langchain_core.output_parsers import JsonOutputParser
+
+from .. import Config, Model, ScoredReportList, State, logger
+
+def report_selector(state: State) -> State:
+    """Select reports to be used for summarization."""
+    logger.info("report_selector")
+
+    llm = Model().llm()
+    parser = JsonOutputParser(pydantic_object=ScoredReportList)
+    system_prompt = SystemMessagePromptTemplate.from_template("""
+        あなたは要約の精度を向上させるために、どの資料を追加で読むべきかを判断する優秀なデータエンジニアです。
+        ページの概要、要約、候補資料の情報を分析し、より精緻な要約を作成するために必要な資料を選択します。
+    """)
+    assistant_prompt = AIMessagePromptTemplate.from_template("""
+        より精緻な要約を作成するために、追加でどの資料を読むべきかを判断してください。
+
+        ## 入力情報
+        1. ページの概要: {overview}
+        2. ページの要約: {summary}
+        3. 候補資料:
+        {candidate_reports}
+
+        ## 判断基準
+        各候補資料について、以下の基準に基づいて5段階評価で評定してください：
+
+        5: 必須 - 要約の精度向上に不可欠な資料
+        4: 重要 - 要約の精度向上に重要な資料
+        3: 有用 - 要約の精度向上に役立つ資料
+        2: 参考 - 要約の精度向上に多少参考になる資料
+        1: 不要 - 要約の精度向上に不要な資料
+
+        評価の際は以下の点を考慮してください：
+        - ページの概要や要約との関連性
+        - 資料の内容の重要度
+        - 資料の種類（議事録、報告書、資料など）
+        - 資料の時系列的な位置づけ
+
+        ## 出力形式
+        評価が3以上の資料を選択し、以下の形式で出力してください：
+
+        {format_instructions}
+
+        ## 制約事項
+        - 評価が3以上の資料のみを出力に含めてください
+        - 出力は必ずJSON形式にしてください
+        - 出力は必ず上記の形式に従ってください
+        - 各資料について、評価点（score）と具体的な理由（reason）を必ず記述してください
+        - 評価点は1から5の整数で記述してください
+    """)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            system_prompt,
+            assistant_prompt,
+        ]
+    )
+    chain = prompt | llm | parser
+    result = chain.invoke(
+        {
+            **state,
+            "format_instructions": parser.get_format_instructions()
+        },
+        Config().get()
+    )
+
+    reports = result["reports"]
+    if not reports:
+        logger.info("No reports selected")
+    else:
+        reports = sorted(reports, key=lambda x: x["score"], reverse=True)
+        for report in reports:
+            logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
+
+    return { **state, "scored_reports": result["reports"] } 

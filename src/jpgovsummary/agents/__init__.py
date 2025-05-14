@@ -2,4 +2,5 @@ from .main_content_extractor import main_content_extractor
 from .meeting_page_type_selector import meeting_page_type_selector
 from .overview_generator import overview_generator
 from .report_enumerator import report_enumerator
+from .report_selector import report_selector
 from .summary_writer import summary_writer 

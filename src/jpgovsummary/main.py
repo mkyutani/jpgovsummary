@@ -13,6 +13,7 @@ from .agents import (
     meeting_page_type_selector,
     overview_generator,
     report_enumerator,
+    report_selector,
     summary_writer,
     main_content_extractor
 )
@@ -52,6 +53,7 @@ def main() -> int:
     graph.add_node("overview_generator", overview_generator)
     graph.add_node("summary_writer", summary_writer)
     graph.add_node("report_enumerator", report_enumerator)
+    graph.add_node("report_selector", report_selector)
     graph.add_node("main_content_extractor", main_content_extractor)
     # Add tool nodes
     graph.add_node("html_loader", ToolNode(tools=[html_loader]))
@@ -64,7 +66,8 @@ def main() -> int:
     graph.add_edge("overview_generator", "main_content_extractor")
     graph.add_edge("main_content_extractor", "summary_writer")
     graph.add_edge("summary_writer", "report_enumerator")
-    graph.add_edge("report_enumerator", END)
+    graph.add_edge("report_enumerator", "report_selector")
+    graph.add_edge("report_selector", END)
     graph.add_edge("pdf_loader", END)
 
     memory = MemorySaver()
