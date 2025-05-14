@@ -1,11 +1,12 @@
 import requests
+from bs4 import BeautifulSoup
 
 from langchain_core.tools import tool
 from markitdown import MarkItDown
 
 from .. import logger
 
-def load(url: str) -> str:
+def load_html_as_markdown(url: str) -> str:
     """
     Load HTML page into markdown string.
 
@@ -38,7 +39,7 @@ def html_loader(html_url: str) -> str:
     """
     logger.info("html_loader")
 
-    markdown = load(html_url)
+    markdown = load_html_as_markdown(html_url)
     logger.info(f"length: {len(markdown)}")
 
     return markdown

@@ -2,15 +2,16 @@ import argparse
 import os
 import signal
 import sys
+import requests
+from urllib.parse import urlparse
 
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from . import Config, Model, route_tools, State
+from . import Config, Model, State
 from .agents import (
-    meeting_page_type_selector,
     overview_generator,
     report_enumerator,
     report_selector,
@@ -18,9 +19,40 @@ from .agents import (
     main_content_extractor
 )
 from .tools import (
-    html_loader,
+    load_html_as_markdown,
     pdf_loader
 )
+
+def get_page_type(url: str) -> str:
+    """
+    Determine the page type based on Content-Type header.
+
+    Args:
+        url (str): URL to check the page type
+
+    Returns:
+        str: Page type ("html", "text", "pdf", "application", "unknown")
+    """
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+        response = requests.head(url, headers=headers, allow_redirects=True)
+        content_type = response.headers.get("Content-Type", "").lower()
+
+        if "application/pdf" in content_type:
+            return "pdf"
+        elif content_type.startswith("application/"):
+            return "application"
+        elif "text/html" in content_type:
+            return "html"
+        elif content_type.startswith("text/"):
+            return "text"
+        else:
+            return "unknown"
+    except Exception as e:
+        print(f"Error checking page type: {e}", file=sys.stderr)
+        return "unknown"
 
 def setup() -> None:
     signal.signal(signal.SIGINT, lambda num, frame: sys.exit(1))
@@ -39,6 +71,16 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if args.url is None:
+        print("No meeting URL provided", file=sys.stderr)
+        return 1
+
+    # Check page type
+    page_type = get_page_type(args.url)
+    if page_type not in ["html", "pdf"]:
+        print(f"Unsupported page type: {page_type}", file=sys.stderr)
+        return 1
+
     # Initialize the default model
     if args.model:
         Model(args.model)
@@ -49,26 +91,42 @@ def main() -> int:
     graph = StateGraph(State)
 
     # Add agent nodes
-    graph.add_node("meeting_page_type_selector", meeting_page_type_selector)
     graph.add_node("overview_generator", overview_generator)
     graph.add_node("summary_writer", summary_writer)
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
     graph.add_node("main_content_extractor", main_content_extractor)
+
     # Add tool nodes
-    graph.add_node("html_loader", ToolNode(tools=[html_loader]))
     graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
 
-    # Define graph edges
-    graph.add_edge(START, "meeting_page_type_selector")
-    graph.add_conditional_edges("meeting_page_type_selector", route_tools, {"html_loader": "html_loader", "pdf_loader": "pdf_loader"})
-    graph.add_edge("html_loader", "overview_generator")
-    graph.add_edge("overview_generator", "main_content_extractor")
-    graph.add_edge("main_content_extractor", "summary_writer")
-    graph.add_edge("summary_writer", "report_enumerator")
-    graph.add_edge("report_enumerator", "report_selector")
-    graph.add_edge("report_selector", END)
-    graph.add_edge("pdf_loader", END)
+    # Define graph edges based on page type
+    if page_type == "html":
+        # Load HTML content directly
+        try:
+            markdown = load_html_as_markdown(args.url)
+            initial_message = {
+                "messages": [
+                    HumanMessage(content=f"会議のURLは\"{args.url}\"です。"),
+                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}")
+                ]
+            }
+        except Exception as e:
+            print(f"Error loading HTML content: {e}", file=sys.stderr)
+            return 1
+
+        graph.add_edge(START, "overview_generator")
+        graph.add_edge("overview_generator", "main_content_extractor")
+        graph.add_edge("main_content_extractor", "summary_writer")
+        graph.add_edge("summary_writer", "report_enumerator")
+        graph.add_edge("report_enumerator", "report_selector")
+        graph.add_edge("report_selector", END)
+    else:  # pdf
+        initial_message = {
+            "messages": [HumanMessage(content=f"会議のURLは\"{args.url}\"です。")]
+        }
+        graph.add_edge(START, "pdf_loader")
+        graph.add_edge("pdf_loader", END)
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
@@ -77,15 +135,6 @@ def main() -> int:
         graph.get_graph().draw_png(output_file_path=args.graph[0])
         return 0
 
-    if args.url is None:
-        print("No meeting URL provided", file=sys.stderr)
-        return 1
-
-    human_message = f"会議のURLは\"{args.url}\"です。"
-
-    initial_message = {
-        "messages": [HumanMessage(content=human_message)]
-    }
     for event in graph.stream(initial_message, config):
         if args.log:
             for value in event.values():
