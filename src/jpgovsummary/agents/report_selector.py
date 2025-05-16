@@ -16,15 +16,14 @@ def report_selector(state: State) -> State:
     parser = JsonOutputParser(pydantic_object=ScoredReportList)
     system_prompt = SystemMessagePromptTemplate.from_template("""
         あなたは要約の精度を向上させるために、どの資料を追加で読むべきかを判断する優秀なデータエンジニアです。
-        ページの概要、要約、候補資料の情報を分析し、より精緻な要約を作成するために必要な資料を選択します。
+        要約と候補資料の情報を分析し、より精緻な要約を作成するために必要な資料を選択します。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
         より精緻な要約を作成するために、追加でどの資料を読むべきかを判断してください。
 
         ## 入力情報
-        1. ページの概要: {overview}
-        2. ページの要約: {summary}
-        3. 候補資料:
+        1. ページの要約: {summary}
+        2. 候補資料:
         {candidate_reports}
 
         ## 判断基準
@@ -37,7 +36,7 @@ def report_selector(state: State) -> State:
         1: 不要 - 要約の精度向上に不要な資料
 
         評価の際は以下の点を考慮してください：
-        - ページの概要や要約との関連性
+        - 要約との関連性
         - 資料の内容の重要度
         - 資料の種類（議事録、報告書、資料など）
         - 資料の時系列的な位置づけ

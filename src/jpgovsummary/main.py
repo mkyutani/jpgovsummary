@@ -12,7 +12,6 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from . import Config, Model, State
 from .agents import (
-    overview_generator,
     report_enumerator,
     report_selector,
     summary_writer,
@@ -91,7 +90,6 @@ def main() -> int:
     graph = StateGraph(State)
 
     # Add agent nodes
-    graph.add_node("overview_generator", overview_generator)
     graph.add_node("summary_writer", summary_writer)
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
@@ -115,8 +113,7 @@ def main() -> int:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
             return 1
 
-        graph.add_edge(START, "overview_generator")
-        graph.add_edge("overview_generator", "main_content_extractor")
+        graph.add_edge(START, "main_content_extractor")
         graph.add_edge("main_content_extractor", "summary_writer")
         graph.add_edge("summary_writer", "report_enumerator")
         graph.add_edge("report_enumerator", "report_selector")
