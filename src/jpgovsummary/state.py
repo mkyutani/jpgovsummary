@@ -11,6 +11,11 @@ class Report(BaseModel):
     name: str = Field(description="The text/name of the report document")
     reason: str = Field(description="The reason for the report")
 
+class Summary(BaseModel):
+    url: str = Field(description="The URL of the summarized document")
+    name: str = Field(description="The name of the summarized document")
+    content: str = Field(description="The summary content of the document")
+
 class ReportList(BaseModel, Generic[T]):
     reports: List[T] = Field(description="List of reports")
 
@@ -52,6 +57,6 @@ class State(TypedDict):
     scored_reports: Optional[ScoredReportList] = Field(description="The selected reports to be used for summarization")
     target_reports: Optional[TargetReportList] = Field(description="The highest scored reports to be summarized")
     overview: Optional[str] = Field(description="The overview of the meeting")
-    target_report_summaries: Optional[List[str]] = Field(description="The summaries of the target reports")
+    target_report_summaries: Optional[List[Summary]] = Field(description="The summaries of the target reports")
     target_report_index: Optional[int] = Field(description="The current index for document summarization", default=0)
     url: Optional[str] = Field(description="The URL of the meeting")

@@ -6,6 +6,7 @@ from .state import (
     CandidateReportList,
     ScoredReport,
     ScoredReportList,
+    Summary,
     TargetReportList,
     State,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "Model",
     "ScoredReport",
     "ScoredReportList",
+    "Summary",
     "TargetReportList",
     "State",
     "logger"
