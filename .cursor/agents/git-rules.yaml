@@ -44,6 +44,8 @@ rules:
           - remove_deleted_files: "Remove all deleted files from git tracking"
       - commit
       - push
+    notes:
+      - "Before any git add/rm operation, always run 'git status' and ensure all changes (new, modified, deleted) are staged according to the status output. This prevents missing files from being left unstaged."
     validation:
       - no_uncommitted_changes
       - meaningful_commit_message
