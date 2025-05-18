@@ -2,7 +2,6 @@ import logging
 from typing import Dict, Any
 from langchain.chains.summarize import load_summarize_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage

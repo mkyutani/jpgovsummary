@@ -1,5 +1,4 @@
 import os
-import sys
 from langchain_openai import ChatOpenAI
 
 from .logger import logger

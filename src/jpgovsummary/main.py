@@ -4,7 +4,6 @@ import sys
 from typing import Union
 import requests
 
-from langgraph.prebuilt import ToolNode
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -18,8 +17,7 @@ from .agents import (
     main_content_extractor
 )
 from .tools import (
-    load_html_as_markdown,
-    pdf_loader
+    load_html_as_markdown
 )
 
 def get_page_type(url: str) -> str:

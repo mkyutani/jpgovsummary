@@ -1,6 +1,6 @@
 import requests
 from typing import List
-from langchain.tools import tool
+from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from PyPDF2 import PdfReader
 from io import BytesIO

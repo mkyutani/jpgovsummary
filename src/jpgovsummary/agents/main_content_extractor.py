@@ -1,12 +1,11 @@
 from langchain_core.prompts import (
-    AIMessagePromptTemplate,
     ChatPromptTemplate,
+    AIMessagePromptTemplate,
+    SystemMessagePromptTemplate,
     MessagesPlaceholder,
-    SystemMessagePromptTemplate
 )
 
 from .. import Config, Model, State, logger
-from ..tools import html_loader, pdf_loader
 
 def main_content_extractor(state: State) -> dict:
     """
