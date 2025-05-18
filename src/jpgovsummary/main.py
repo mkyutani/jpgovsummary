@@ -62,14 +62,14 @@ def should_continue(state: State) -> Union[str, bool]:
     次のステップを決定する条件分岐
     """
     # document_summarizerの結果を確認
-    if "scored_reports" in state:
-        # scored_report_indexがなければ0で初期化
-        if "scored_report_index" not in state:
-            state["scored_report_index"] = 0
+    if "target_reports" in state:
+        # target_report_indexがなければ0で初期化
+        if "target_report_index" not in state:
+            state["target_report_index"] = 0
             return "document_summarizer"
         
         # まだ要約が完了していない資料がある場合は再度document_summarizerへ
-        if state["scored_report_index"] < len(state["scored_reports"]):
+        if state["target_report_index"] < len(state["target_reports"]):
             return "document_summarizer"
         # すべての資料の要約が完了した場合は終了
         return END

@@ -18,15 +18,15 @@ def document_summarizer(state: State) -> State:
 
     try:
         # 現在のインデックスを取得
-        current_index = state.get("scored_report_index", 0)
-        scored_reports = state.get("scored_reports", [])
+        current_index = state.get("target_report_index", 0)
+        target_reports = state.get("target_reports", [])
         
-        if current_index >= len(scored_reports):
-            logger.info("すべての文書の要約が完了しました")
+        if current_index >= len(target_reports):
+            logger.info("All documents have been summarized")
             return state
 
         # 現在の文書のURLを取得
-        current_report = scored_reports[current_index]
+        current_report = target_reports[current_index]
         url = current_report["url"]
         name = current_report["name"]
 
@@ -35,8 +35,8 @@ def document_summarizer(state: State) -> State:
         # PDFを読み込んでテキストを抽出
         texts = load_pdf_as_text(url)
         if not texts:
-            logger.warning(f"PDFの読み込みに失敗しました: {url}")
-            return {**state, "scored_report_index": current_index + 1}
+            logger.warning(f"Failed to load PDF: {url}")
+            return {**state, "target_report_index": current_index + 1}
 
         # テキストを分割
         text_splitter = RecursiveCharacterTextSplitter(
@@ -85,16 +85,16 @@ def document_summarizer(state: State) -> State:
         message = HumanMessage(content=f"URL: {url}\n\n要約:\n{summary['output_text']}")
         
         # 新しいstateを作成
-        new_summaries = state.get("scored_report_summaries", []) + [summary["output_text"]]
+        new_summaries = state.get("target_report_summaries", []) + [summary["output_text"]]
         
         return {
             **state,
             "messages": [message],
-            "scored_report_summaries": new_summaries,
-            "scored_report_index": current_index + 1
+            "target_report_summaries": new_summaries,
+            "target_report_index": current_index + 1
         }
 
     except Exception as e:
-        logger.error(f"文書の要約中にエラーが発生しました: {str(e)}")
-        current_index = state.get("scored_report_index", 0)
-        return {**state, "scored_report_index": current_index + 1} 
+        logger.error(f"Error occurred while summarizing document: {str(e)}")
+        current_index = state.get("target_report_index", 0)
+        return {**state, "target_report_index": current_index + 1} 

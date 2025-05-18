@@ -1,7 +1,6 @@
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
-    MessagesPlaceholder,
     SystemMessagePromptTemplate
 )
 from langchain_core.output_parsers import JsonOutputParser
@@ -40,23 +39,25 @@ def report_selector(state: State) -> State:
         - 資料の内容の重要度
         - 資料の種類（議事録、報告書、資料など）
         - 資料の時系列的な位置づけ
+        - 同じ資料に概要と本文がある場合、概要を優先し、本文のスコアを1段階下げてください
 
         ## 出力形式
-        評価が3以上の資料を選択し、以下の形式で出力してください：
+        すべての資料について評価を行い、以下の形式で出力してください：
 
         {format_instructions}
 
         ## 制約事項
-        - 評価が3以上の資料のみを出力に含めてください
+        - すべての資料について評価を行ってください
         - 出力は必ずJSON形式にしてください
         - 出力は必ず上記の形式に従ってください
         - 各資料について、評価点（score）と具体的な理由（reason）を必ず記述してください
         - 評価点は1から5の整数で記述してください
+        - 同じ資料に概要と本文がある場合、概要を優先し、本文のスコアを1段階下げてください
     """)
     prompt = ChatPromptTemplate.from_messages(
         [
             system_prompt,
-            assistant_prompt,
+            assistant_prompt
         ]
     )
     chain = prompt | llm | parser
@@ -71,9 +72,23 @@ def report_selector(state: State) -> State:
     reports = result["reports"]
     if not reports:
         logger.info("No reports selected")
-    else:
-        reports = sorted(reports, key=lambda x: x["score"], reverse=True)
-        for report in reports:
-            logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
+        return {
+            **state,
+            "scored_reports": [],
+            "target_reports": []
+        }
 
-    return { **state, "scored_reports": result["reports"] } 
+    reports = sorted(reports, key=lambda x: x["score"], reverse=True)
+    for report in reports:
+        logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
+
+    # 最高評価の資料をtarget_reportsに設定
+    highest_score = reports[0]["score"]
+    target_reports = [r for r in reports if r["score"] == highest_score]
+    logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
+
+    return {
+        **state,
+        "scored_reports": reports,
+        "target_reports": target_reports
+    } 
