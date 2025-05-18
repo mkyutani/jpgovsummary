@@ -9,16 +9,8 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from . import Config, Model, State
-from .agents import (
-    report_enumerator,
-    report_selector,
-    document_summarizer,
-    summary_writer,
-    main_content_extractor
-)
-from .tools import (
-    load_html_as_markdown
-)
+from .agents import *
+from .tools import *
 
 def get_page_type(url: str) -> str:
     """
@@ -107,11 +99,11 @@ def main() -> int:
     graph = StateGraph(State)
 
     # Add agent nodes
-    graph.add_node("summary_writer", summary_writer)
+    graph.add_node("main_content_extractor", main_content_extractor)
+    graph.add_node("overview_summarizer", overview_summarizer)
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
     graph.add_node("document_summarizer", document_summarizer)
-    graph.add_node("main_content_extractor", main_content_extractor)
 
     # Define graph edges based on page type
     if page_type == "html":
@@ -129,8 +121,8 @@ def main() -> int:
             return 1
 
         graph.add_edge(START, "main_content_extractor")
-        graph.add_edge("main_content_extractor", "summary_writer")
-        graph.add_edge("summary_writer", "report_enumerator")
+        graph.add_edge("main_content_extractor", "overview_summarizer")
+        graph.add_edge("overview_summarizer", "report_enumerator")
         graph.add_edge("report_enumerator", "report_selector")
         
         # report_selectorの後の条件分岐を追加
@@ -142,7 +134,7 @@ def main() -> int:
                 END: END
             }
         )
-        
+
         # document_summarizerの後の条件分岐を追加
         graph.add_conditional_edges(
             "document_summarizer",
@@ -177,7 +169,7 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
-    summary = final_state.values.get("summary")
+    summary = final_state.values.get("overview_summary")
 
     if summary:
         print(summary)

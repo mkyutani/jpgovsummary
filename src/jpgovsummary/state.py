@@ -33,6 +33,6 @@ class State(TypedDict):
     candidate_reports: Optional[CandidateReportList] = Field(description="The candidate reports to be selected")
     scored_reports: Optional[ScoredReportList] = Field(description="The selected reports to be used for summarization")
     target_reports: Optional[ScoredReportList] = Field(description="The highest scored reports to be summarized")
-    summary: Optional[str] = Field(description="The summary of the meeting")
+    overview_summary: Optional[str] = Field(description="The overview summary of the meeting")
     target_report_summaries: Optional[List[str]] = Field(description="The summaries of the target reports")
     target_report_index: Optional[int] = Field(description="The current index for document summarization", default=0)

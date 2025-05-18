@@ -7,9 +7,9 @@ from langchain_core.prompts import (
 
 from .. import Config, Model, State, logger
 
-def summary_writer(state: State) -> dict:
+def overview_summarizer(state: State) -> dict:
     """
-    ## Summary Writer Agent
+    ## Overview Summarizer Agent
 
     Write a summary of the meeting based on the input state.
 
@@ -19,7 +19,7 @@ def summary_writer(state: State) -> dict:
     Returns:
         dict: A dictionary containing the generated summary message
     """
-    logger.info("summary_writer")
+    logger.info("overview_summarizer")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
@@ -110,4 +110,4 @@ def summary_writer(state: State) -> dict:
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
     logger.info(result.content)
-    return { "summary": result.content, "messages": [result] } 
+    return { "overview_summary": result.content, "messages": [result] } 
