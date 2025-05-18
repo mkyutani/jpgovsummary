@@ -21,7 +21,7 @@ def report_selector(state: State) -> State:
         より精緻な要約を作成するために、追加でどの資料を読むべきかを判断してください。
 
         ## 入力情報
-        1. ページの要約: {overview_summary}
+        1. ページの要約: {overview}
         2. 候補資料:
         {candidate_reports}
 

@@ -100,7 +100,7 @@ def main() -> int:
 
     # Add agent nodes
     graph.add_node("main_content_extractor", main_content_extractor)
-    graph.add_node("overview_summarizer", overview_summarizer)
+    graph.add_node("overview_generator", overview_generator)
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
     graph.add_node("document_summarizer", document_summarizer)
@@ -114,15 +114,16 @@ def main() -> int:
                 "messages": [
                     HumanMessage(content=f"会議のURLは\"{args.url}\"です。"),
                     HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}")
-                ]
+                ],
+                "url": args.url
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
             return 1
 
         graph.add_edge(START, "main_content_extractor")
-        graph.add_edge("main_content_extractor", "overview_summarizer")
-        graph.add_edge("overview_summarizer", "report_enumerator")
+        graph.add_edge("main_content_extractor", "overview_generator")
+        graph.add_edge("overview_generator", "report_enumerator")
         graph.add_edge("report_enumerator", "report_selector")
         
         # report_selectorの後の条件分岐を追加
@@ -169,10 +170,11 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
-    summary = final_state.values.get("overview_summary")
+    overview = final_state.values.get("overview")
+    url = final_state.values.get("url")
 
-    if summary:
-        print(summary)
+    if overview and url:
+        print(f"{overview}\n{url}")
     else:
         print("No summary found", file=sys.stderr)
 
