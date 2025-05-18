@@ -7,6 +7,7 @@ from .state import (
     CandidateReportList,
     ScoredReport,
     ScoredReportList,
+    TargetReportList,
     State,
 )
 from .utils import is_uuid
@@ -18,6 +19,7 @@ __all__ = [
     "Model",
     "ScoredReport",
     "ScoredReportList",
+    "TargetReportList",
     "State",
     "logger"
 ]

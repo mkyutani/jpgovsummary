@@ -5,7 +5,7 @@ from langchain_core.prompts import (
 )
 from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Config, Model, ScoredReportList, State, logger
+from .. import Config, Model, ScoredReportList, TargetReportList, State, logger
 
 def report_selector(state: State) -> State:
     """Select reports to be used for summarization."""
@@ -87,5 +87,5 @@ def report_selector(state: State) -> State:
     return {
         **state,
         "scored_reports": ScoredReportList(reports=reports),
-        "target_reports": ScoredReportList(reports=target_reports)
+        "target_reports": TargetReportList(reports=target_reports)
     } 

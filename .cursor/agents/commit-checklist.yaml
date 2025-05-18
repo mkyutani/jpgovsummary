@@ -1,0 +1,117 @@
+name: commit-checklist
+description: Personal checklist for commits
+
+categories:
+  - name: python-standards
+    description: Python coding standards
+    items:
+      - "PEP 8 style guide is followed"
+      - "PEP 257 docstring conventions are followed"
+      - "PEP 484 type hints are used"
+      - "PEP 585 type annotations are used"
+      - "PEP 563 postponed evaluation is used if needed"
+      - "PEP 604 union types are used"
+      - "PEP 612 parameter specification is used if needed"
+      - "PEP 613 type aliases are used if needed"
+      - "PEP 621 project metadata is up to date"
+      - "PEP 631 dependency specification is correct"
+
+  - name: code-quality
+    description: Code quality checks
+    items:
+      - "Code follows style guidelines"
+      - "Code is self-documenting"
+      - "No debug code or comments left"
+      - "Changes are focused and minimal"
+      - "No hardcoded values"
+      - "Error handling is appropriate"
+      - "Logging is appropriate"
+      - "Imports are properly organized"
+      - "No unused imports"
+      - "No wildcard imports"
+      - "No circular imports"
+
+  - name: testing
+    description: Testing requirements
+    items:
+      - "Unit tests added/updated"
+      - "Integration tests added/updated"
+      - "All tests pass"
+      - "Edge cases are covered"
+      - "Error cases are tested"
+      - "pytest fixtures are used appropriately"
+      - "Test coverage is maintained"
+      - "Mock objects are used when needed"
+      - "Async tests are handled correctly"
+
+  - name: documentation
+    description: Documentation requirements
+    items:
+      - "Code comments are clear and helpful"
+      - "README is updated if needed"
+      - "API documentation is updated"
+      - "Type hints are added/updated"
+      - "Function/method docstrings are updated"
+      - "Sphinx documentation is updated if used"
+      - "Examples are provided for complex functions"
+      - "Parameter descriptions are complete"
+      - "Return value descriptions are complete"
+      - "Exceptions are documented"
+
+  - name: issue-tracking
+    description: Issue tracking requirements
+    items:
+      - "Issue is properly referenced in commit message"
+      - "Branch name includes issue number"
+      - "Changes address the issue requirements"
+      - "Issue description is clear"
+
+  - name: security
+    description: Security considerations
+    items:
+      - "No sensitive data in code"
+      - "No hardcoded credentials"
+      - "Input validation is in place"
+      - "Error messages don't leak sensitive info"
+      - "SQL injection is prevented"
+      - "XSS vulnerabilities are checked"
+      - "CSRF protection is in place"
+      - "Dependencies are checked for vulnerabilities"
+
+  - name: performance
+    description: Performance considerations
+    items:
+      - "No unnecessary database queries"
+      - "No memory leaks"
+      - "No infinite loops"
+      - "Resource usage is optimized"
+      - "Database indexes are used appropriately"
+      - "Caching is implemented where beneficial"
+      - "Async operations are used when appropriate"
+      - "Large data sets are handled efficiently"
+
+  - name: maintainability
+    description: Maintainability checks
+    items:
+      - "Code is modular"
+      - "Dependencies are up to date"
+      - "No duplicate code"
+      - "Configuration is externalized"
+      - "Environment variables are used appropriately"
+      - "Virtual environment is properly configured"
+      - "Requirements files are up to date"
+      - "Setup.py or pyproject.toml is maintained"
+
+  - name: review
+    description: Final review
+    items:
+      - "All changes are committed"
+      - "No temporary files"
+      - "No merge conflicts"
+      - "Branch is up to date"
+      - "Changes are ready to be merged"
+      - "flake8 passes"
+      - "mypy type checking passes"
+      - "black formatting is applied"
+      - "isort import sorting is applied"
+      - "pylint passes" 
