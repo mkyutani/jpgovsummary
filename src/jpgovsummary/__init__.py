@@ -10,7 +10,6 @@ from .state import (
     TargetReportList,
     State,
 )
-from .utils import is_uuid
 
 __all__ = [
     "CandidateReport",
