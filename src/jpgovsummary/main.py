@@ -74,7 +74,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
     parser.add_argument("url", nargs='?', type=str, help="URL of the meeting")
     parser.add_argument("--graph", nargs=1, type=str, default=None, help="Output file path for the graph")
-    parser.add_argument("--log", action="store_true", help="Print graph logs")
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
 
     args = parser.parse_args()
@@ -157,16 +156,7 @@ def main() -> int:
         return 0
 
     for event in graph.stream(initial_message, config):
-        if args.log:
-            for value in event.values():
-                if isinstance(value["messages"], list):
-                    last_message = value["messages"][-1]
-                else:
-                    last_message = value["messages"]
-                last_message.pretty_print()
-
-    if args.log:
-        print("-" * 80, file=sys.stderr)
+        pass
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
