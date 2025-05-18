@@ -1,9 +1,8 @@
 import argparse
-import os
 import signal
 import sys
+from typing import Union
 import requests
-from urllib.parse import urlparse
 
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import StateGraph, START, END
@@ -14,6 +13,7 @@ from . import Config, Model, State
 from .agents import (
     report_enumerator,
     report_selector,
+    document_summarizer,
     summary_writer,
     main_content_extractor
 )
@@ -59,6 +59,25 @@ def setup() -> None:
     sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
+def should_continue(state: State) -> Union[str, bool]:
+    """
+    次のステップを決定する条件分岐
+    """
+    # document_summarizerの結果を確認
+    if "scored_reports" in state:
+        # scored_report_indexがなければ0で初期化
+        if "scored_report_index" not in state:
+            state["scored_report_index"] = 0
+            return "document_summarizer"
+        
+        # まだ要約が完了していない資料がある場合は再度document_summarizerへ
+        if state["scored_report_index"] < len(state["scored_reports"]):
+            return "document_summarizer"
+        # すべての資料の要約が完了した場合は終了
+        return END
+    
+    return END
+
 def main() -> int:
     setup()
 
@@ -93,10 +112,8 @@ def main() -> int:
     graph.add_node("summary_writer", summary_writer)
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
+    graph.add_node("document_summarizer", document_summarizer)
     graph.add_node("main_content_extractor", main_content_extractor)
-
-    # Add tool nodes
-    graph.add_node("pdf_loader", ToolNode(tools=[pdf_loader]))
 
     # Define graph edges based on page type
     if page_type == "html":
@@ -117,13 +134,29 @@ def main() -> int:
         graph.add_edge("main_content_extractor", "summary_writer")
         graph.add_edge("summary_writer", "report_enumerator")
         graph.add_edge("report_enumerator", "report_selector")
-        graph.add_edge("report_selector", END)
+        
+        # report_selectorの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "report_selector",
+            should_continue,
+            {
+                "document_summarizer": "document_summarizer",
+                END: END
+            }
+        )
+        
+        # document_summarizerの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "document_summarizer",
+            should_continue,
+            {
+                "document_summarizer": "document_summarizer",
+                END: END
+            }
+        )
     else:  # pdf
-        initial_message = {
-            "messages": [HumanMessage(content=f"会議のURLは\"{args.url}\"です。")]
-        }
-        graph.add_edge(START, "pdf_loader")
-        graph.add_edge("pdf_loader", END)
+        print("Not implemented yet", file=sys.stderr)
+        return 1
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)

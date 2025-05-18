@@ -23,6 +23,9 @@ class CandidateReportList(BaseModel):
     reports: List[CandidateReport] = Field(description="List of candidate reports to be selected")
 
 class State(TypedDict):
+    """
+    State for the application.
+    """
     main_content: Optional[str] = Field(description="The main content of the meeting extracted from markdown")
     markdown: Optional[str] = Field(description="The markdown content of the meeting")
     overview: Optional[str] = Field(description="The overview of the meeting, including the title and the URL")
@@ -30,3 +33,5 @@ class State(TypedDict):
     candidate_reports: Optional[CandidateReportList] = Field(description="The candidate reports to be selected")
     scored_reports: Optional[ScoredReportList] = Field(description="The selected reports to be used for summarization")
     summary: Optional[str] = Field(description="The summary of the meeting")
+    scored_report_summaries: Optional[List[str]] = Field(description="The summaries of the scored reports")
+    scored_report_index: Optional[int] = Field(description="The current index for document summarization", default=0)
