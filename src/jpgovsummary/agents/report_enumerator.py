@@ -103,13 +103,14 @@ def report_enumerator(state: State) -> State:
     )
 
     reports = result["reports"]
-    if not reports:
+    if not reports or len(reports) == 0:
         logger.info("No reports found")
+        reports = []
     else:
         reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
         for report in reports:
             logger.info(f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}")
 
-    reports = [report for report in result["reports"] if report["is_document"]]
+        reports = [report for report in result["reports"] if report["is_document"]]
 
-    return { **state, "candidate_reports": result["reports"] } 
+    return { **state, "candidate_reports": CandidateReportList(reports=reports) } 

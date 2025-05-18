@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage
 
-from .. import Model, State, logger
+from .. import Model, ScoredReportList, State, logger
 from ..tools import load_pdf_as_text
 
 def document_summarizer(state: State) -> State:
@@ -19,16 +19,16 @@ def document_summarizer(state: State) -> State:
     try:
         # 現在のインデックスを取得
         current_index = state.get("target_report_index", 0)
-        target_reports = state.get("target_reports", [])
-        
+        target_reports = state.get("target_reports", ScoredReportList(reports=[]))
+
         if current_index >= len(target_reports):
             logger.info("All documents have been summarized")
             return state
 
         # 現在の文書のURLを取得
         current_report = target_reports[current_index]
-        url = current_report["url"]
-        name = current_report["name"]
+        url = current_report.url
+        name = current_report.name
 
         logger.info(f"Processing: {name} {url}")
         

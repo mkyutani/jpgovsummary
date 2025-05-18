@@ -1,4 +1,4 @@
-from typing import Annotated, List, Optional, Any
+from typing import Annotated, List, Optional, Any, Dict, Iterator
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
@@ -19,8 +19,32 @@ class CandidateReport(BaseModel):
 class ScoredReportList(BaseModel):
     reports: List[ScoredReport] = Field(description="List of selected reports to be used for summarization")
 
+    def __len__(self) -> int:
+        return len(self.reports)
+
+    def __iter__(self) -> Iterator[ScoredReport]:
+        return iter(self.reports)
+
+    def __getitem__(self, index: int) -> ScoredReport:
+        return self.reports[index]
+
+    def __str__(self) -> str:
+        return self.model_dump_json(indent=2)
+
 class CandidateReportList(BaseModel):
     reports: List[CandidateReport] = Field(description="List of candidate reports to be selected")
+
+    def __len__(self) -> int:
+        return len(self.reports)
+
+    def __iter__(self) -> Iterator[CandidateReport]:
+        return iter(self.reports)
+
+    def __getitem__(self, index: int) -> CandidateReport:
+        return self.reports[index]
+
+    def __str__(self) -> str:
+        return self.model_dump_json(indent=2)
 
 class State(TypedDict):
     """

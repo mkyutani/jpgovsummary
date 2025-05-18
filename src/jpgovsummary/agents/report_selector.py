@@ -70,25 +70,22 @@ def report_selector(state: State) -> State:
     )
 
     reports = result["reports"]
-    if not reports:
+    if not reports or len(reports) == 0:
         logger.info("No reports selected")
-        return {
-            **state,
-            "scored_reports": [],
-            "target_reports": []
-        }
+        reports = []
+        target_reports = []
+    else:
+        reports = sorted(reports, key=lambda x: x["score"], reverse=True)
+        for report in reports:
+            logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
 
-    reports = sorted(reports, key=lambda x: x["score"], reverse=True)
-    for report in reports:
-        logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
-
-    # 最高評価の資料をtarget_reportsに設定
-    highest_score = reports[0]["score"]
-    target_reports = [r for r in reports if r["score"] == highest_score]
-    logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
+        # 最高評価の資料をtarget_reportsに設定
+        highest_score = reports[0]["score"]
+        target_reports = [r for r in reports if r["score"] == highest_score]
+        logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
 
     return {
         **state,
-        "scored_reports": reports,
-        "target_reports": target_reports
+        "scored_reports": ScoredReportList(reports=reports),
+        "target_reports": ScoredReportList(reports=target_reports)
     } 
