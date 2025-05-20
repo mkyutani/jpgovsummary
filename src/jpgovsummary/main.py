@@ -63,8 +63,24 @@ def should_continue(state: State) -> Union[str, bool]:
         # まだ要約が完了していない資料がある場合は再度document_summarizerへ
         if state["target_report_index"] < len(state["target_reports"]):
             return "document_summarizer"
-        # すべての資料の要約が完了した場合は終了
-        return END
+        
+        # すべての資料の要約が完了した場合
+        # target_report_summariesがある場合のみsummary_integratorへ
+        target_report_summaries = state.get("target_report_summaries", [])
+        
+        # 有効な要約（contentが存在する）が1つ以上あるかチェック
+        valid_summaries = [s for s in target_report_summaries if s.get('content', '')]
+        
+        if valid_summaries:
+            return "summary_integrator"
+        else:
+            # 要約がない場合は、overviewを最終要約として設定
+            overview = state.get("overview", "")
+            url = state.get("url", "")
+            message = HumanMessage(content=f"{overview}\n{url}")
+            state["messages"] = [message]
+            state["final_summary"] = overview
+            return END
     
     return END
 
@@ -103,6 +119,7 @@ def main() -> int:
     graph.add_node("report_enumerator", report_enumerator)
     graph.add_node("report_selector", report_selector)
     graph.add_node("document_summarizer", document_summarizer)
+    graph.add_node("summary_integrator", summary_integrator)
 
     # Define graph edges based on page type
     if page_type == "html":
@@ -131,6 +148,7 @@ def main() -> int:
             should_continue,
             {
                 "document_summarizer": "document_summarizer",
+                "summary_integrator": "summary_integrator",
                 END: END
             }
         )
@@ -141,9 +159,13 @@ def main() -> int:
             should_continue,
             {
                 "document_summarizer": "document_summarizer",
+                "summary_integrator": "summary_integrator",
                 END: END
             }
         )
+        
+        # summary_integratorの後はEND
+        graph.add_edge("summary_integrator", END)
     else:  # pdf
         print("Not implemented yet", file=sys.stderr)
         return 1
@@ -160,13 +182,18 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
-    overview = final_state.values.get("overview")
+    final_summary = final_state.values.get("final_summary")
     url = final_state.values.get("url")
 
-    if overview and url:
-        print(f"{overview}\n{url}")
+    if final_summary and url:
+        print(f"{final_summary}\n{url}")
     else:
-        print("No summary found", file=sys.stderr)
+        # 従来の出力をフォールバックとして使用
+        overview = final_state.values.get("overview")
+        if overview and url:
+            print(f"{overview}\n{url}")
+        else:
+            print("No summary found", file=sys.stderr)
 
     return 0
 

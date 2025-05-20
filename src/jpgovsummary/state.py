@@ -60,3 +60,4 @@ class State(TypedDict):
     target_report_summaries: Optional[List[Summary]] = Field(description="The summaries of the target reports")
     target_report_index: Optional[int] = Field(description="The current index for document summarization", default=0)
     url: Optional[str] = Field(description="The URL of the meeting")
+    final_summary: Optional[str] = Field(description="The final integrated summary from all sources", default=None)
