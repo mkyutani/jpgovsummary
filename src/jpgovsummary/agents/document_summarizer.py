@@ -118,7 +118,6 @@ def document_summarizer(state: State) -> State:
             # JSONのパースを行う
             # エラーは外側のtry-exceptでキャッチされる
             summary_obj = parser.parse(json_result.content)
-            print(summary_obj)
 
             # メッセージも作成
             message = HumanMessage(content=f"文書: {name}\nURL: {url}\n\n要約:\n{json_result.content}")
