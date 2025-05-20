@@ -20,12 +20,7 @@ def report_selector(state: State) -> State:
     assistant_prompt = AIMessagePromptTemplate.from_template("""
         より精緻な要約を作成するために、追加でどの資料を読むべきかを判断してください。
 
-        ## 入力情報
-        1. ページの要約: {overview}
-        2. 候補資料:
-        {candidate_reports}
-
-        ## 判断基準
+        ## ステップ1: 資料の評価
         各候補資料について、以下の基準に基づいて5段階評価で評定してください：
 
         5: 必須 - 要約の精度向上に不可欠な資料
@@ -40,6 +35,15 @@ def report_selector(state: State) -> State:
         - 資料の種類（議事録、報告書、資料など）
         - 資料の時系列的な位置づけ
         - 同じ資料に概要と本文がある場合、概要を優先し、本文のスコアを1段階下げてください
+        - 「委員名簿」「座席表」「資料や会議の公開方法」に関する資料は要約の精度向上に役立ちません
+
+        ## ステップ2: 最高評価の再調整
+        ステップ1の評価結果において、最高スコアの資料が「議事次第」「アジェンダ」「委員名簿」「座席表」などのみであった場合は、次点スコアの資料も最高スコアと同点にしてください。
+
+        ## 入力情報
+        1. ページの要約: {overview}
+        2. 候補資料:
+        {candidate_reports}
 
         ## 出力形式
         すべての資料について評価を行い、以下の形式で出力してください：
@@ -79,7 +83,7 @@ def report_selector(state: State) -> State:
         for report in reports:
             logger.info(f"{report['score']} {report['name']} {report['url']} {report['reason']}")
 
-        # 最高評価の資料をtarget_reportsに設定
+        # 最高評価の資料をtarget_reportsに設定（プロンプトの指示に従う）
         highest_score = reports[0]["score"]
         target_reports = [r for r in reports if r["score"] == highest_score]
         logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
