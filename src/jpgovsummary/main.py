@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from . import Config, Model, State
+from . import Config, Model, State, Report, TargetReportList
 from .agents import *
 from .tools import *
 
@@ -167,8 +167,35 @@ def main() -> int:
         # summary_integratorの後はEND
         graph.add_edge("summary_integrator", END)
     else:  # pdf
-        print("Not implemented yet", file=sys.stderr)
-        return 1
+        # PDFファイルの場合は直接document_summarizerで処理
+        initial_message = {
+            "messages": [
+                HumanMessage(content=f"PDFファイルのURLは\"{args.url}\"です。")
+            ],
+            "url": args.url,
+            "target_reports": TargetReportList(reports=[
+                Report(url=args.url, name="PDFファイル", reason="直接指定されたPDFファイル")
+            ]),
+            "target_report_index": 0,
+            "overview": ""  # summary_integratorで使用
+        }
+
+        # PDFフロー：START -> document_summarizer -> summary_integrator -> END
+        graph.add_edge(START, "document_summarizer")
+        
+        # document_summarizerの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "document_summarizer",
+            should_continue,
+            {
+                "document_summarizer": "document_summarizer",
+                "summary_integrator": "summary_integrator",
+                END: END
+            }
+        )
+        
+        # summary_integratorの後はEND
+        graph.add_edge("summary_integrator", END)
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)

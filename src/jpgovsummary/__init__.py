@@ -4,6 +4,7 @@ from .model import Model
 from .state import (
     CandidateReport,
     CandidateReportList,
+    Report,
     ScoredReport,
     ScoredReportList,
     Summary,
@@ -16,6 +17,7 @@ __all__ = [
     "CandidateReportList",
     "Config",
     "Model",
+    "Report",
     "ScoredReport",
     "ScoredReportList",
     "Summary",
