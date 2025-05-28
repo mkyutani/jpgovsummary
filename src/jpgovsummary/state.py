@@ -61,3 +61,4 @@ class State(TypedDict):
     target_report_index: Optional[int] = Field(description="The current index for document summarization", default=0)
     url: Optional[str] = Field(description="The URL of the meeting")
     final_summary: Optional[str] = Field(description="The final integrated summary from all sources", default=None)
+    summary_retry_count: Optional[int] = Field(description="The retry count for summary_integrator when final_summary exceeds 300 characters", default=0)

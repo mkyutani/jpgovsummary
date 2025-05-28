@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from . import Config, Model, State, Report, TargetReportList
+from . import Config, Model, State, Report, TargetReportList, logger
 from .agents import *
 from .tools import *
 
@@ -53,6 +53,42 @@ def should_continue(state: State) -> Union[str, bool]:
     """
     次のステップを決定する条件分岐
     """
+    # summary_integratorの結果をチェック（final_summaryが存在する場合）
+    if "final_summary" in state and state["final_summary"]:
+        final_summary = state["final_summary"]
+        url = state.get("url", "")
+        
+        # 最終出力全体（final_summary + "\n" + url）が300文字以上の場合のみ処理
+        if len(f"{final_summary}\n{url}") >= 300:
+            # 再実行回数を取得（初回は0）
+            summary_retry_count = state.get("summary_retry_count", 0)
+            max_retries = 3  # 最大再実行回数
+            
+            # まだ再実行回数の上限に達していない場合は再実行
+            if summary_retry_count < max_retries:
+                # 再実行回数をインクリメント
+                state["summary_retry_count"] = summary_retry_count + 1
+                
+                # ログ出力
+                logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
+                
+                # より短い要約を求めるメッセージを追加
+                retry_message = HumanMessage(
+                    content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
+                )
+                
+                # 既存のメッセージに追加
+                current_messages = state.get("messages", [])
+                state["messages"] = current_messages + [retry_message]
+                
+                return "summary_integrator"
+            else:
+                # 再実行上限に達した場合
+                logger.warning("summary_integrator retry limit exceeded: final_summary still exceeds 300 characters")
+        
+        # 299文字以下、または再実行上限に達した場合は終了
+        return END
+    
     # document_summarizerの結果を確認
     if "target_reports" in state:
         # target_report_indexがなければ0で初期化
@@ -164,8 +200,15 @@ def main() -> int:
             }
         )
         
-        # summary_integratorの後はEND
-        graph.add_edge("summary_integrator", END)
+        # summary_integratorの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "summary_integrator",
+            should_continue,
+            {
+                "summary_integrator": "summary_integrator",
+                END: END
+            }
+        )
     else:  # pdf
         # PDFファイルの場合は直接document_summarizerで処理
         initial_message = {
@@ -194,8 +237,15 @@ def main() -> int:
             }
         )
         
-        # summary_integratorの後はEND
-        graph.add_edge("summary_integrator", END)
+        # summary_integratorの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "summary_integrator",
+            should_continue,
+            {
+                "summary_integrator": "summary_integrator",
+                END: END
+            }
+        )
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
