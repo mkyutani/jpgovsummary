@@ -5,6 +5,7 @@ from langchain_core.prompts import (
     MessagesPlaceholder,
     SystemMessagePromptTemplate,
 )
+import urllib.parse
 
 from .. import CandidateReportList, Config, Model, State, logger
 
@@ -82,7 +83,14 @@ def report_enumerator(state: State) -> State:
 
         #### 出力の注意点
         - すべてのリンクを漏れなく出力してください
-        - リンクが相対的なパスである場合は、正確なURLに変換してください
+        - リンクが相対的なパスである場合は、ベースURL（{url}）と組み合わせて完全なURLに変換してください
+          例：
+          - 相対パス: "/documents/report.pdf" 
+          - ベースURL: "https://example.gov.jp/meeting/"
+          - 完全URL: "https://example.gov.jp/documents/report.pdf"
+          - 相対パス: "../files/data.pdf"
+          - ベースURL: "https://example.gov.jp/meeting/page/"
+          - 完全URL: "https://example.gov.jp/meeting/files/data.pdf"
         - 判断結果がtrue/falseに関わらず、すべてのリンクについて判断理由を記述してください
 
         {format_instructions}
@@ -100,6 +108,16 @@ def report_enumerator(state: State) -> State:
         logger.info("No reports found")
         reports = []
     else:
+        # Python側でURL正規化を実行（確実な相対パス変換）
+        base_url = state.get("url", "")
+        if base_url:
+            for report in reports:
+                original_url = report["url"]
+                normalized_url = urllib.parse.urljoin(base_url, original_url)
+                if original_url != normalized_url:
+                    logger.info(f"URL normalized: {original_url} -> {normalized_url}")
+                report["url"] = normalized_url
+
         reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
         for report in reports:
             logger.info(
