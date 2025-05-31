@@ -141,6 +141,19 @@ def document_summarizer(state: State) -> State:
             summary_result = chain.invoke(docs)
             summary_content = summary_result["output_text"]
 
+            # 表紙・タイトルページの場合、overviewが空ならタイトル情報で置き換える
+            if current_index == 0:  # 最初の文書のみチェック
+                current_overview = state.get("overview", "")
+                if not current_overview or current_overview.strip() == "":
+                    # 「～について：」の資料名部分を抽出
+                    import re
+                    match = re.search(r'「([^」]+)」について[：:]', summary_content)
+                    if match:
+                        title = match.group(1).strip()
+                        if len(title) > 3:
+                            state["overview"] = f"「{title}」"
+                            logger.info(f"Updated overview with title: 「{title}」")
+
             # 既に資料名が含まれているかチェックし、含まれていない場合のみ付加
             if not ("について：" in summary_content or "について:" in summary_content):
                 summary_content_with_name = f"「{name}」について：{summary_content}"
