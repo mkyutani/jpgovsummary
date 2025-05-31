@@ -1,7 +1,7 @@
 from langchain_core.runnables import RunnableConfig
 
-class Config:
 
+class Config:
     config = None
 
     @classmethod

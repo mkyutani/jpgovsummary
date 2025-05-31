@@ -1,11 +1,12 @@
 from langchain_core.prompts import (
-    ChatPromptTemplate,
     AIMessagePromptTemplate,
-    SystemMessagePromptTemplate,
+    ChatPromptTemplate,
     MessagesPlaceholder,
+    SystemMessagePromptTemplate,
 )
 
 from .. import Config, Model, State, logger
+
 
 def main_content_extractor(state: State) -> dict:
     """
@@ -58,13 +59,9 @@ def main_content_extractor(state: State) -> dict:
         - 不要なセクションを削除した後の、整理されたマークダウンを返してください
     """)
     prompt = ChatPromptTemplate.from_messages(
-        [
-            system_prompt,
-            assistant_prompt,
-            MessagesPlaceholder(variable_name="messages")
-        ]
+        [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
     logger.info(f"length: {len(result.content)}")
-    return { "main_content": result.content, "messages": [result] } 
+    return {"main_content": result.content, "messages": [result]}

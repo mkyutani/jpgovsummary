@@ -1,13 +1,14 @@
-import requests
-from typing import List
-from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage
-from PyPDF2 import PdfReader
 from io import BytesIO
+
+import requests
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from PyPDF2 import PdfReader
 
 from .. import logger
 
-def load_pdf_as_text(url: str) -> List[str]:
+
+def load_pdf_as_text(url: str) -> list[str]:
     """
     PDFファイルをダウンロードしてテキストを抽出する
 
@@ -40,6 +41,7 @@ def load_pdf_as_text(url: str) -> List[str]:
         logger.error(f"PDFファイルの読み込み中にエラーが発生しました: {str(e)}")
         raise
 
+
 @tool
 def pdf_loader(state: dict) -> dict:
     """
@@ -56,7 +58,7 @@ def pdf_loader(state: dict) -> dict:
         last_message = state["messages"][-1]
         if not isinstance(last_message, HumanMessage):
             raise ValueError("最後のメッセージがHumanMessageではありません")
-        
+
         url = last_message.content
         if not url.startswith("http"):
             raise ValueError("URLが指定されていません")
@@ -69,8 +71,8 @@ def pdf_loader(state: dict) -> dict:
             **state,
             "messages": [
                 *state["messages"],
-                HumanMessage(content=f"PDFファイルのテキストは以下の通りです：\n\n{texts[0]}")
-            ]
+                HumanMessage(content=f"PDFファイルのテキストは以下の通りです：\n\n{texts[0]}"),
+            ],
         }
 
     except Exception as e:

@@ -1,10 +1,11 @@
 import os
+
 from langchain_openai import ChatOpenAI
 
 from .logger import logger
 
-class Model:
 
+class Model:
     model = None
 
     @classmethod

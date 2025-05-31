@@ -1,12 +1,13 @@
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
     MessagesPlaceholder,
-    SystemMessagePromptTemplate
+    SystemMessagePromptTemplate,
 )
-from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Config, Model, CandidateReportList, State, logger
+from .. import CandidateReportList, Config, Model, State, logger
+
 
 def report_enumerator(state: State) -> State:
     """
@@ -37,7 +38,7 @@ def report_enumerator(state: State) -> State:
         Step 2. 取得した各リンクについて、以下の判断基準に照らし合わせて関連資料であるか否かを判断します。
         Step 3. 取得したすべてのリンクについて、リンク先のURLとリンク先のテキスト、及び、判断結果と判断理由を記述します。
 
-        ### Step 1. リンク先のURLとリンク先のテキストの取得                                                           
+        ### Step 1. リンク先のURLとリンク先のテキストの取得
         メインコンテンツのマークダウンのリンクをすべて抽出し、リンク先のURLとリンク先のテキストを取得します。
         すべてのリンクを漏れなく抽出してください。ただし、最初に読み込んだマークダウンには存在するがメインコンテンツではないリンクは出力に含める必要はありません。
         抽出したリンクは必ず出力に含めてください。
@@ -87,19 +88,11 @@ def report_enumerator(state: State) -> State:
         {format_instructions}
     """)
     prompt = ChatPromptTemplate.from_messages(
-        [
-            system_prompt,
-            assistant_prompt,
-            MessagesPlaceholder(variable_name="messages")
-        ]
+        [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
     )
     chain = prompt | llm | parser
     result = chain.invoke(
-        {
-            **state,
-            "format_instructions": parser.get_format_instructions()
-        },
-        Config().get()
+        {**state, "format_instructions": parser.get_format_instructions()}, Config().get()
     )
 
     reports = result["reports"]
@@ -109,8 +102,10 @@ def report_enumerator(state: State) -> State:
     else:
         reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
         for report in reports:
-            logger.info(f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}")
+            logger.info(
+                f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}"
+            )
 
         reports = [report for report in result["reports"] if report["is_document"]]
 
-    return { **state, "candidate_reports": CandidateReportList(reports=reports) } 
+    return {**state, "candidate_reports": CandidateReportList(reports=reports)}

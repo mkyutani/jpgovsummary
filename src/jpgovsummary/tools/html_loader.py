@@ -1,9 +1,9 @@
 import requests
-
 from langchain_core.tools import tool
 from markitdown import MarkItDown
 
 from .. import logger
+
 
 def load_html_as_markdown(url: str) -> str:
     """
@@ -22,6 +22,7 @@ def load_html_as_markdown(url: str) -> str:
     response.raise_for_status()
     markdown = MarkItDown().convert(response)
     return markdown.text_content
+
 
 @tool
 def html_loader(html_url: str) -> str:

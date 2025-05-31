@@ -1,11 +1,12 @@
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
-    SystemMessagePromptTemplate
+    SystemMessagePromptTemplate,
 )
-from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Config, Model, ScoredReportList, TargetReportList, State, logger
+from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
+
 
 def report_selector(state: State) -> State:
     """Select reports to be used for summarization."""
@@ -58,19 +59,10 @@ def report_selector(state: State) -> State:
         - 評価点は1から5の整数で記述してください
         - 同じ資料に概要と本文がある場合、概要を優先し、本文のスコアを1段階下げてください
     """)
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            system_prompt,
-            assistant_prompt
-        ]
-    )
+    prompt = ChatPromptTemplate.from_messages([system_prompt, assistant_prompt])
     chain = prompt | llm | parser
     result = chain.invoke(
-        {
-            **state,
-            "format_instructions": parser.get_format_instructions()
-        },
-        Config().get()
+        {**state, "format_instructions": parser.get_format_instructions()}, Config().get()
     )
 
     reports = result["reports"]
@@ -91,5 +83,5 @@ def report_selector(state: State) -> State:
     return {
         **state,
         "scored_reports": ScoredReportList(reports=reports),
-        "target_reports": TargetReportList(reports=target_reports)
-    } 
+        "target_reports": TargetReportList(reports=target_reports),
+    }

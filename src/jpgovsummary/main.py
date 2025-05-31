@@ -1,16 +1,23 @@
 import argparse
 import signal
 import sys
-from typing import Union
-import requests
 
-from langgraph.graph import StateGraph, START, END
+import requests
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
 
-from . import Config, Model, State, Report, TargetReportList, logger
-from .agents import *
-from .tools import *
+from . import Config, Model, Report, State, TargetReportList, logger
+from .agents import (
+    document_summarizer,
+    main_content_extractor,
+    overview_generator,
+    report_enumerator,
+    report_selector,
+    summary_integrator,
+)
+from .tools import load_html_as_markdown
+
 
 def get_page_type(url: str) -> str:
     """
@@ -43,13 +50,15 @@ def get_page_type(url: str) -> str:
         print(f"Error checking page type: {e}", file=sys.stderr)
         return "unknown"
 
+
 def setup() -> None:
     signal.signal(signal.SIGINT, lambda num, frame: sys.exit(1))
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
-def should_continue(state: State) -> Union[str, bool]:
+
+def should_continue(state: State) -> str | bool:
     """
     次のステップを決定する条件分岐
     """
@@ -57,56 +66,58 @@ def should_continue(state: State) -> Union[str, bool]:
     if "final_summary" in state and state["final_summary"]:
         final_summary = state["final_summary"]
         url = state.get("url", "")
-        
+
         # 最終出力全体（final_summary + "\n" + url）が300文字以上の場合のみ処理
         if len(f"{final_summary}\n{url}") >= 300:
             # 再実行回数を取得（初回は0）
             summary_retry_count = state.get("summary_retry_count", 0)
             max_retries = 3  # 最大再実行回数
-            
+
             # まだ再実行回数の上限に達していない場合は再実行
             if summary_retry_count < max_retries:
                 # 再実行回数をインクリメント
                 state["summary_retry_count"] = summary_retry_count + 1
-                
+
                 # ログ出力
                 logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
-                
+
                 # より短い要約を求めるメッセージを追加
                 retry_message = HumanMessage(
                     content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
                 )
-                
+
                 # 既存のメッセージに追加
                 current_messages = state.get("messages", [])
                 state["messages"] = current_messages + [retry_message]
-                
+
                 return "summary_integrator"
             else:
                 # 再実行上限に達した場合
-                logger.warning("summary_integrator retry limit exceeded: final_summary still exceeds 300 characters")
-        
+                logger.warning(
+                    "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
+                )
+
         # 299文字以下、または再実行上限に達した場合は終了
         return END
-    
+
     # document_summarizerの結果を確認
     if "target_reports" in state:
         # target_report_indexがなければ0で初期化
         if "target_report_index" not in state:
             state["target_report_index"] = 0
             return "document_summarizer"
-        
+
         # まだ要約が完了していない資料がある場合は再度document_summarizerへ
         if state["target_report_index"] < len(state["target_reports"]):
             return "document_summarizer"
-        
+
         # すべての資料の要約が完了した場合
         # target_report_summariesがある場合のみsummary_integratorへ
         target_report_summaries = state.get("target_report_summaries", [])
-        
+
         # 有効な要約（contentが存在する）が1つ以上あるかチェック
-        valid_summaries = [s for s in target_report_summaries if s.get('content', '')]
-        
+        valid_summaries = [s for s in target_report_summaries if s.get("content", "")]
+
         if valid_summaries:
             return "summary_integrator"
         else:
@@ -117,15 +128,18 @@ def should_continue(state: State) -> Union[str, bool]:
             state["messages"] = [message]
             state["final_summary"] = overview
             return END
-    
+
     return END
+
 
 def main() -> int:
     setup()
 
     parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
-    parser.add_argument("url", nargs='?', type=str, help="URL of the meeting")
-    parser.add_argument("--graph", nargs=1, type=str, default=None, help="Output file path for the graph")
+    parser.add_argument("url", nargs="?", type=str, help="URL of the meeting")
+    parser.add_argument(
+        "--graph", nargs=1, type=str, default=None, help="Output file path for the graph"
+    )
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
 
     args = parser.parse_args()
@@ -164,10 +178,10 @@ def main() -> int:
             markdown = load_html_as_markdown(args.url)
             initial_message = {
                 "messages": [
-                    HumanMessage(content=f"会議のURLは\"{args.url}\"です。"),
-                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}")
+                    HumanMessage(content=f'会議のURLは"{args.url}"です。'),
+                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}"),
                 ],
-                "url": args.url
+                "url": args.url,
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
@@ -177,7 +191,7 @@ def main() -> int:
         graph.add_edge("main_content_extractor", "overview_generator")
         graph.add_edge("overview_generator", "report_enumerator")
         graph.add_edge("report_enumerator", "report_selector")
-        
+
         # report_selectorの後の条件分岐を追加
         graph.add_conditional_edges(
             "report_selector",
@@ -185,8 +199,8 @@ def main() -> int:
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
-                END: END
-            }
+                END: END,
+            },
         )
 
         # document_summarizerの後の条件分岐を追加
@@ -196,36 +210,33 @@ def main() -> int:
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
-                END: END
-            }
+                END: END,
+            },
         )
-        
+
         # summary_integratorの後の条件分岐を追加
         graph.add_conditional_edges(
             "summary_integrator",
             should_continue,
-            {
-                "summary_integrator": "summary_integrator",
-                END: END
-            }
+            {"summary_integrator": "summary_integrator", END: END},
         )
     else:  # pdf
         # PDFファイルの場合は直接document_summarizerで処理
         initial_message = {
-            "messages": [
-                HumanMessage(content=f"PDFファイルのURLは\"{args.url}\"です。")
-            ],
+            "messages": [HumanMessage(content=f'PDFファイルのURLは"{args.url}"です。')],
             "url": args.url,
-            "target_reports": TargetReportList(reports=[
-                Report(url=args.url, name="PDFファイル", reason="直接指定されたPDFファイル")
-            ]),
+            "target_reports": TargetReportList(
+                reports=[
+                    Report(url=args.url, name="PDFファイル", reason="直接指定されたPDFファイル")
+                ]
+            ),
             "target_report_index": 0,
-            "overview": ""  # summary_integratorで使用
+            "overview": "",  # summary_integratorで使用
         }
 
         # PDFフロー：START -> document_summarizer -> summary_integrator -> END
         graph.add_edge(START, "document_summarizer")
-        
+
         # document_summarizerの後の条件分岐を追加
         graph.add_conditional_edges(
             "document_summarizer",
@@ -233,18 +244,15 @@ def main() -> int:
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
-                END: END
-            }
+                END: END,
+            },
         )
-        
+
         # summary_integratorの後の条件分岐を追加
         graph.add_conditional_edges(
             "summary_integrator",
             should_continue,
-            {
-                "summary_integrator": "summary_integrator",
-                END: END
-            }
+            {"summary_integrator": "summary_integrator", END: END},
         )
 
     memory = MemorySaver()
@@ -254,7 +262,7 @@ def main() -> int:
         graph.get_graph().draw_png(output_file_path=args.graph[0])
         return 0
 
-    for event in graph.stream(initial_message, config):
+    for _event in graph.stream(initial_message, config):
         pass
 
     # Get the final state and output the meeting title
@@ -273,6 +281,7 @@ def main() -> int:
             print("No summary found", file=sys.stderr)
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

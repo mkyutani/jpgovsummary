@@ -1,11 +1,12 @@
 from langchain_core.prompts import (
-    ChatPromptTemplate,
     AIMessagePromptTemplate,
-    SystemMessagePromptTemplate,
+    ChatPromptTemplate,
     MessagesPlaceholder,
+    SystemMessagePromptTemplate,
 )
 
 from .. import Config, Model, State, logger
+
 
 def overview_generator(state: State) -> dict:
     """
@@ -98,13 +99,9 @@ def overview_generator(state: State) -> dict:
         ```
     """)
     prompt = ChatPromptTemplate.from_messages(
-        [
-            system_prompt,
-            assistant_prompt,
-            MessagesPlaceholder(variable_name="messages")
-        ]
+        [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
     logger.info(result.content)
-    return { "overview": result.content, "messages": [result] } 
+    return {"overview": result.content, "messages": [result]}

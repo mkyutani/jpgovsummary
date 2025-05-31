@@ -11,5 +11,5 @@ __all__ = [
     "overview_generator",
     "report_enumerator",
     "report_selector",
-    "summary_integrator"
-] 
+    "summary_integrator",
+]

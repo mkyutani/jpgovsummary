@@ -7,9 +7,9 @@ from .state import (
     Report,
     ScoredReport,
     ScoredReportList,
+    State,
     Summary,
     TargetReportList,
-    State,
 )
 
 __all__ = [
@@ -23,5 +23,5 @@ __all__ = [
     "Summary",
     "TargetReportList",
     "State",
-    "logger"
+    "logger",
 ]
