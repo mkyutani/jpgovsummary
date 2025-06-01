@@ -34,32 +34,51 @@ def summary_integrator(state: State) -> State:
         ]
     )
 
+    # 実質的な内容があるかをチェック
+    valid_summaries = [
+        summary for summary in target_report_summaries
+        if summary.get("content", "").strip() and 
+           not summary.get("content", "").strip().endswith("について：") and
+           len(summary.get("content", "").strip()) > 1
+    ]
+
+    if not valid_summaries:
+        logger.warning("No valid summaries with substantial content found")
+        final_summary = overview if overview else ""
+        if not final_summary:
+            final_summary = ""
+        message = HumanMessage(content=f"{final_summary}\n{url}")
+        return {**state, "messages": [message], "final_summary": final_summary}
+
     try:
         # Step 1: 資料の要約をまとめる
         combined_summary_prompt = PromptTemplate(
             input_variables=["summaries", "max_chars"],
             template="""
             以下の複数の資料の要約をまとめて、{max_chars}文字以下の簡潔な要約を作成してください。
-            重要な情報を漏らさないようにしながら、重複を避け、論理的な流れを保ってください。
 
-            【会議名・資料名の推測】
-            各資料の内容から以下のようなパターンで会議名や資料名を抽出・推測してください：
-            - 「○○会議」「第○回○○会議」
-            - 「○○報告書」「○○とりまとめ」
-            - 「○○の案内」「○○のお知らせ」「○○の募集」
-            - その他、公的機関の会議や資料として一般的な名称
-            
-            部分的な情報からでも推測し、要約に会議名や資料名を含めてください。
+            **重要な制約：**
+            - 実際に書かれている内容のみを使用してください
+            - 推測や補完、創作は一切行わないでください
+            - 「について：」の後に実質的な内容がない場合は空文字列を返してください
+            - 意味のある議論内容、検討事項、結論、データがない場合は要約を作成しないでください
+
+            **統合方針：**
+            - 重要な情報を漏らさないようにしながら、重複を避け、論理的な流れを保ってください
+            - 会議名や資料名は「について：」の前の部分から取得してください
+            - 複数の資料がある場合は、適切にまとめてください
 
             # 資料の要約:
             {summaries}
 
-            # 出力形式
+            # 出力要件
             - {max_chars}文字以下の要約文
             - 箇条書きではなく、文章形式で
+            - 実際に書かれている内容のみを含める
             - 会議名や資料名を含める
             - 専門用語は適切に使用
             - 内容の重複を避ける
+            - 実質的内容がない場合は空文字列を返す
             """,
         )
 
@@ -69,13 +88,28 @@ def summary_integrator(state: State) -> State:
         )
         combined_summary = combined_result.content.strip()
 
+        # 統合結果が空または無意味な場合のチェック
+        if not combined_summary or len(combined_summary) < 1:
+            logger.warning("Combined summary is empty or too short")
+            final_summary = overview if overview else ""
+            if not final_summary:
+                final_summary = ""
+            message = HumanMessage(content=f"{final_summary}\n{url}")
+            return {**state, "messages": [message], "final_summary": final_summary}
+
         # Step 2: 統合した要約とoverviewを合わせて最終要約を作成
         final_summary_prompt = PromptTemplate(
             input_variables=["combined_summary", "overview", "max_chars"],
             template="""
             以下の要約内容をもとに、{max_chars}文字以下で全体の要約を作成してください。
 
-            【重要な指示】
+            **重要な制約：**
+            - 実際に書かれている内容のみを使用してください
+            - 推測や補完、創作は一切行わないでください
+            - 会議の目的や結論を創作しないでください
+            - overviewとcombined_summaryの両方に実質的内容がない場合は空文字列を返してください
+
+            **統合方針：**
             - overviewに会議名や資料名が含まれている場合は、必ず要約文中に残してください
             - overviewが提供されていない場合は、統合要約から会議名や資料名を抽出して使用してください
             - 「第1回○○会議」などの正式名称や回数情報を省略しないでください
@@ -87,13 +121,13 @@ def summary_integrator(state: State) -> State:
             # 関連資料の要約
             {combined_summary}
 
-            # 出力形式
+            # 出力要件
             - {max_chars}文字以下の要約文
             - 箇条書きではなく、文章形式でまとめる
-            - 会議名や資料名（回数含む）が必ず含まれていること
+            - 会議名や資料名（回数含む）が含まれていること
             - 専門用語は適切に使用する
             - 内容の重複を避ける
-            - 会議の目的や結論を明確にする
+            - 実質的内容がない場合は空文字列を返す
             """,
         )
 

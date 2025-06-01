@@ -63,39 +63,47 @@ def should_continue(state: State) -> str | bool:
     次のステップを決定する条件分岐
     """
     # summary_integratorの結果をチェック（final_summaryが存在する場合）
-    if "final_summary" in state and state["final_summary"]:
+    if "final_summary" in state:
         final_summary = state["final_summary"]
-        url = state.get("url", "")
+        overview = state.get("overview", "")
+        
+        # 両方とも空の場合は終了（無限ループを防ぐ）
+        if not final_summary and not overview:
+            return END
+            
+        # final_summaryがある場合の処理
+        if final_summary:
+            url = state.get("url", "")
 
-        # 最終出力全体（final_summary + "\n" + url）が300文字以上の場合のみ処理
-        if len(f"{final_summary}\n{url}") >= 300:
-            # 再実行回数を取得（初回は0）
-            summary_retry_count = state.get("summary_retry_count", 0)
-            max_retries = 3  # 最大再実行回数
+            # 最終出力全体（final_summary + "\n" + url）が300文字以上の場合のみ処理
+            if len(f"{final_summary}\n{url}") >= 300:
+                # 再実行回数を取得（初回は0）
+                summary_retry_count = state.get("summary_retry_count", 0)
+                max_retries = 3  # 最大再実行回数
 
-            # まだ再実行回数の上限に達していない場合は再実行
-            if summary_retry_count < max_retries:
-                # 再実行回数をインクリメント
-                state["summary_retry_count"] = summary_retry_count + 1
+                # まだ再実行回数の上限に達していない場合は再実行
+                if summary_retry_count < max_retries:
+                    # 再実行回数をインクリメント
+                    state["summary_retry_count"] = summary_retry_count + 1
 
-                # ログ出力
-                logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
+                    # ログ出力
+                    logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
 
-                # より短い要約を求めるメッセージを追加
-                retry_message = HumanMessage(
-                    content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
-                )
+                    # より短い要約を求めるメッセージを追加
+                    retry_message = HumanMessage(
+                        content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
+                    )
 
-                # 既存のメッセージに追加
-                current_messages = state.get("messages", [])
-                state["messages"] = current_messages + [retry_message]
+                    # 既存のメッセージに追加
+                    current_messages = state.get("messages", [])
+                    state["messages"] = current_messages + [retry_message]
 
-                return "summary_integrator"
-            else:
-                # 再実行上限に達した場合
-                logger.warning(
-                    "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
-                )
+                    return "summary_integrator"
+                else:
+                    # 再実行上限に達した場合
+                    logger.warning(
+                        "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
+                    )
 
         # 299文字以下、または再実行上限に達した場合は終了
         return END
@@ -267,18 +275,20 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
-    final_summary = final_state.values.get("final_summary")
-    url = final_state.values.get("url")
+    final_summary = final_state.values.get("final_summary", "")
+    overview = final_state.values.get("overview", "")
+    url = final_state.values.get("url", "URL")
 
-    if final_summary and url:
+    if final_summary:
+        # final_summaryがある場合
         print(f"{final_summary}\n{url}")
+    elif overview:
+        # final_summaryが空でoverviewがある場合
+        print(f"{overview}\n{url}")
     else:
-        # 従来の出力をフォールバックとして使用
-        overview = final_state.values.get("overview")
-        if overview and url:
-            print(f"{overview}\n{url}")
-        else:
-            print("No summary found", file=sys.stderr)
+        # 両方とも空の場合
+        print("No summary created", file=sys.stderr)
+        print(url)
 
     return 0
 
