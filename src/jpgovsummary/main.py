@@ -58,85 +58,91 @@ def setup() -> None:
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
 
-def should_continue(state: State) -> str | bool:
+def should_continue_final_summary(state: State) -> str | bool:
     """
-    次のステップを決定する条件分岐
+    final_summary関連の条件分岐
     """
-    # summary_integratorの結果をチェック（final_summaryが存在する場合）
-    if "final_summary" in state:
-        final_summary = state["final_summary"]
-        overview = state.get("overview", "")
-        
-        # 両方とも空の場合は終了（無限ループを防ぐ）
-        if not final_summary and not overview:
-            return END
-            
-        # final_summaryがある場合の処理
-        if final_summary:
-            url = state.get("url", "")
-
-            # 最終出力全体（final_summary + "\n" + url）が300文字以上の場合のみ処理
-            if len(f"{final_summary}\n{url}") >= 300:
-                # 再実行回数を取得（初回は0）
-                summary_retry_count = state.get("summary_retry_count", 0)
-                max_retries = 3  # 最大再実行回数
-
-                # まだ再実行回数の上限に達していない場合は再実行
-                if summary_retry_count < max_retries:
-                    # 再実行回数をインクリメント
-                    state["summary_retry_count"] = summary_retry_count + 1
-
-                    # ログ出力
-                    logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
-
-                    # より短い要約を求めるメッセージを追加
-                    retry_message = HumanMessage(
-                        content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
-                    )
-
-                    # 既存のメッセージに追加
-                    current_messages = state.get("messages", [])
-                    state["messages"] = current_messages + [retry_message]
-
-                    return "summary_integrator"
-                else:
-                    # 再実行上限に達した場合
-                    logger.warning(
-                        "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
-                    )
-
-        # 299文字以下、または再実行上限に達した場合は終了
+    final_summary = state.get("final_summary", "")
+    overview = state.get("overview", "")
+    
+    # final_summaryまたはoverviewが存在しない場合は終了
+    if not final_summary and not overview:
         return END
+    
+    # final_summaryが存在しない場合は終了
+    if not final_summary:
+        return END
+    
+    url = state.get("url", "")
+    total_length = len(f"{final_summary}\n{url}")
+    
+    # 300文字未満の場合は終了
+    if total_length < 300:
+        return END
+    
+    # 再実行回数をチェック
+    summary_retry_count = state.get("summary_retry_count", 0)
+    max_retries = 3
+    
+    # 再実行上限に達した場合は終了
+    if summary_retry_count >= max_retries:
+        logger.warning(
+            "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
+        )
+        return END
+    
+    # 再実行を実行
+    state["summary_retry_count"] = summary_retry_count + 1
+    
+    logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
+    
+    retry_message = HumanMessage(
+        content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
+    )
+    
+    current_messages = state.get("messages", [])
+    state["messages"] = current_messages + [retry_message]
+    
+    return "summary_integrator"
 
-    # document_summarizerの結果を確認
-    if "target_reports" in state:
-        # target_report_indexがなければ0で初期化
-        if "target_report_index" not in state:
-            state["target_report_index"] = 0
-            return "document_summarizer"
 
-        # まだ要約が完了していない資料がある場合は再度document_summarizerへ
-        if state["target_report_index"] < len(state["target_reports"]):
-            return "document_summarizer"
+def should_continue_target_reports(state: State) -> str | bool:
+    """
+    target_reports関連の条件分岐
+    """
+    # target_reportsが存在しない場合は終了
+    if "target_reports" not in state:
+        return END
+    
+    # target_report_indexがなければ0で初期化
+    if "target_report_index" not in state:
+        state["target_report_index"] = 0
+        return "document_summarizer"
 
-        # すべての資料の要約が完了した場合
-        # target_report_summariesがある場合のみsummary_integratorへ
-        target_report_summaries = state.get("target_report_summaries", [])
+    # まだ要約が完了していない資料がある場合は再度document_summarizerへ
+    if state["target_report_index"] < len(state["target_reports"]):
+        return "document_summarizer"
 
-        # 有効な要約（contentが存在する）が1つ以上あるかチェック
-        valid_summaries = [s for s in target_report_summaries if s.get("content", "")]
+    # すべての資料の要約が完了した場合
+    # target_report_summariesがある場合のみsummary_integratorへ
+    target_report_summaries = state.get("target_report_summaries", [])
 
-        if valid_summaries:
+    # 有効な要約（contentが存在する）が1つ以上あるかチェック
+    valid_summaries = [s for s in target_report_summaries if s.get("content", "")]
+
+    # valid_summariesが存在し、実際にcontentがある場合のみsummary_integratorへ
+    if valid_summaries:
+        # すべてのcontentを連結して空文字列でないかチェック
+        combined_content = "".join(s.get("content", "") for s in valid_summaries).strip()
+        if combined_content:
             return "summary_integrator"
-        else:
-            # 要約がない場合は、overviewを最終要約として設定
-            overview = state.get("overview", "")
-            url = state.get("url", "")
-            message = HumanMessage(content=f"{overview}\n{url}")
-            state["messages"] = [message]
-            state["final_summary"] = overview
-            return END
-
+    
+    # 要約がない場合は、overviewを最終要約として設定
+    overview = state.get("overview", "")
+    url = state.get("url", "")
+    message = HumanMessage(content=f"{overview}\n{url}")
+    state["messages"] = [message]
+    state["final_summary"] = overview
     return END
 
 
@@ -203,7 +209,7 @@ def main() -> int:
         # report_selectorの後の条件分岐を追加
         graph.add_conditional_edges(
             "report_selector",
-            should_continue,
+            should_continue_target_reports,
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
@@ -214,7 +220,7 @@ def main() -> int:
         # document_summarizerの後の条件分岐を追加
         graph.add_conditional_edges(
             "document_summarizer",
-            should_continue,
+            should_continue_target_reports,
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
@@ -225,7 +231,7 @@ def main() -> int:
         # summary_integratorの後の条件分岐を追加
         graph.add_conditional_edges(
             "summary_integrator",
-            should_continue,
+            should_continue_final_summary,
             {"summary_integrator": "summary_integrator", END: END},
         )
     else:  # pdf
@@ -248,7 +254,7 @@ def main() -> int:
         # document_summarizerの後の条件分岐を追加
         graph.add_conditional_edges(
             "document_summarizer",
-            should_continue,
+            should_continue_target_reports,
             {
                 "document_summarizer": "document_summarizer",
                 "summary_integrator": "summary_integrator",
@@ -259,7 +265,7 @@ def main() -> int:
         # summary_integratorの後の条件分岐を追加
         graph.add_conditional_edges(
             "summary_integrator",
-            should_continue,
+            should_continue_final_summary,
             {"summary_integrator": "summary_integrator", END: END},
         )
 
