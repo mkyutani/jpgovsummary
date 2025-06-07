@@ -17,18 +17,41 @@ from .agents import (
     summary_integrator,
 )
 from .tools import load_html_as_markdown
+from .utils import is_local_file, get_local_file_path, validate_local_file
 
 
 def get_page_type(url: str) -> str:
     """
-    Determine the page type based on Content-Type header.
+    Determine the page type based on Content-Type header for URLs or file extension for local files.
 
     Args:
-        url (str): URL to check the page type
+        url (str): URL or local file path to check the page type
 
     Returns:
         str: Page type ("html", "text", "pdf", "application", "unknown")
     """
+    # Check if it's a local file
+    if is_local_file(url):
+        file_path = get_local_file_path(url)
+        
+        try:
+            validate_local_file(file_path)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return "unknown"
+        
+        # Determine type by file extension
+        file_path_lower = file_path.lower()
+        if file_path_lower.endswith(".pdf"):
+            return "pdf"
+        elif file_path_lower.endswith((".html", ".htm")):
+            return "html"
+        elif file_path_lower.endswith(".txt"):
+            return "text"
+        else:
+            return "unknown"
+    
+    # Handle remote URLs (existing logic)
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -150,7 +173,7 @@ def main() -> int:
     setup()
 
     parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
-    parser.add_argument("url", nargs="?", type=str, help="URL of the meeting")
+    parser.add_argument("url", nargs="?", type=str, help="URL of the meeting or local file path (PDF/HTML)")
     parser.add_argument(
         "--graph", nargs=1, type=str, default=None, help="Output file path for the graph"
     )
@@ -159,7 +182,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.url is None:
-        print("No meeting URL provided", file=sys.stderr)
+        print("No meeting URL or file path provided", file=sys.stderr)
         return 1
 
     # Check page type
