@@ -151,12 +151,12 @@ def should_continue_target_reports(state: State) -> str | bool:
     target_report_summaries = state.get("target_report_summaries", [])
 
     # 有効な要約（contentが存在する）が1つ以上あるかチェック
-    valid_summaries = [s for s in target_report_summaries if s.get("content", "")]
+    valid_summaries = [s for s in target_report_summaries if s.content.strip()]
 
     # valid_summariesが存在し、実際にcontentがある場合のみsummary_integratorへ
     if valid_summaries:
         # すべてのcontentを連結して空文字列でないかチェック
-        combined_content = "".join(s.get("content", "") for s in valid_summaries).strip()
+        combined_content = "".join(s.content for s in valid_summaries).strip()
         if combined_content:
             return "summary_integrator"
     
