@@ -278,6 +278,10 @@ def document_summarizer(state: State) -> State:
         if not texts:
             logger.warning(f"Failed to load PDF: {url}")
             summary_obj = Summary(url=url, name=name, content="")
+            
+            # 要約内容をログに出力
+            logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
+            
             message = HumanMessage(
                 content=f"文書: {name}\nURL: {url}\n\n要約: (PDFを読み込めませんでした)"
             )
@@ -293,7 +297,6 @@ def document_summarizer(state: State) -> State:
                 summary_content = generate_structure_based_summary(
                     structure_content, name, llm
                 )
-                logger.info("Generated summary from document structure")
             else:
                 # 構成・要点が見つからない場合は従来処理
                 logger.info(f"No structure found, using traditional summarization for: {name}")
@@ -349,6 +352,9 @@ def document_summarizer(state: State) -> State:
             parsed_dict = parser.parse(json_result.content)
             # 辞書をSummaryオブジェクトに変換
             summary_obj = Summary(**parsed_dict)
+
+            # 要約内容をログに出力
+            logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
 
             # メッセージも作成
             message = HumanMessage(

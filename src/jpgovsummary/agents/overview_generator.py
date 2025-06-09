@@ -75,5 +75,5 @@ def overview_generator(state: State) -> dict:
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
-    logger.info(result.content)
+    logger.info(f"Overview: {result.content.replace('\n', '\\n')}")
     return {"overview": result.content, "messages": [result]}
