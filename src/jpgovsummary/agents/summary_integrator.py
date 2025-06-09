@@ -25,21 +25,21 @@ def summary_integrator(state: State) -> State:
         message = HumanMessage(content=f"{final_summary}\n{url}")
         return {**state, "messages": [message], "final_summary": final_summary}
 
-    # 各資料の要約を1つのテキストに結合（summaryが辞書として扱われるように修正）
+    # 各資料の要約を1つのテキストに結合
     summaries_text = "\n\n".join(
         [
-            f"【{summary.get('name', '')}】\n{summary.get('content', '')}"
+            f"【{summary.name}】\n{summary.content}"
             for summary in target_report_summaries
-            if summary.get("content", "")
+            if summary.content
         ]
     )
 
     # 実質的な内容があるかをチェック
     valid_summaries = [
         summary for summary in target_report_summaries
-        if summary.get("content", "").strip() and 
-           not summary.get("content", "").strip().endswith("について：") and
-           len(summary.get("content", "").strip()) > 1
+        if summary.content.strip() and 
+           not summary.content.strip().endswith("について：") and
+           len(summary.content.strip()) > 1
     ]
 
     if not valid_summaries:
