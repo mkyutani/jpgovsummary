@@ -287,19 +287,21 @@ def document_summarizer(state: State) -> State:
             )
         else:
             # 文書構成・要点の抽出を試行
-            logger.info(f"Attempting to extract document structure from first 10 pages")
+            if len(texts) > 10:
+                logger.info(f"Extracting document structure from first 10 pages (total pages: {len(texts)})")
+            else:
+                logger.info(f"Extracting document structure")
             structure_content, pages_info = extract_document_structure(texts, llm)
             
             if structure_content != "なし" and structure_content.strip():
                 # 構成・要点が見つかった場合
-                logger.info(f"Found document structure/key points for: {name}")
                 logger.info(f"Structure found on pages: {pages_info}")
                 summary_content = generate_structure_based_summary(
                     structure_content, name, llm
                 )
             else:
-                # 構成・要点が見つからない場合は従来処理
-                logger.info(f"No structure found, using traditional summarization for: {name}")
+                # 構成・要点が見つからない場合は全ページ探索
+                logger.info(f"No structure found. Full-page analysis for: {name} (total pages: {len(texts)})")
                 summary_content = traditional_summarize(texts, llm)
 
             # 表紙・タイトルページの場合、overviewが空ならタイトル情報で置き換える
