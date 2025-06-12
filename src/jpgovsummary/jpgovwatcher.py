@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from . import Config, Model, Report, State, TargetReportList, logger
 from .agents import (
     document_summarizer,
+    human_reviewer,
     main_content_extractor,
     overview_generator,
     report_enumerator,
@@ -87,6 +88,7 @@ def should_continue_final_summary(state: State) -> str | bool:
     """
     final_summary = state.get("final_summary", "")
     overview = state.get("overview", "")
+    skip_human_review = state.get("skip_human_review", False)
     
     # final_summaryまたはoverviewが存在しない場合は終了
     if not final_summary and not overview:
@@ -99,20 +101,24 @@ def should_continue_final_summary(state: State) -> str | bool:
     url = state.get("url", "")
     total_length = len(f"{final_summary}\n{url}")
     
-    # 300文字未満の場合は終了
+    # 300文字未満の場合はhuman_reviewerへ（スキップフラグがない場合）
     if total_length < 300:
-        return END
+        if skip_human_review:
+            return END
+        return "human_reviewer"
     
     # 再実行回数をチェック
     summary_retry_count = state.get("summary_retry_count", 0)
     max_retries = 3
     
-    # 再実行上限に達した場合は終了
+    # 再実行上限に達した場合はhuman_reviewerへ（スキップフラグがない場合）
     if summary_retry_count >= max_retries:
         logger.warning(
             "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
         )
-        return END
+        if skip_human_review:
+            return END
+        return "human_reviewer"
     
     # 再実行を実行
     state["summary_retry_count"] = summary_retry_count + 1
@@ -127,6 +133,22 @@ def should_continue_final_summary(state: State) -> str | bool:
     state["messages"] = current_messages + [retry_message]
     
     return "summary_integrator"
+
+
+def should_continue_human_review(state: State) -> str | bool:
+    """
+    human_reviewer関連の条件分岐
+    """
+    # レビューが完了している場合は終了
+    review_completed = state.get("review_completed", False)
+    if review_completed:
+        return END
+    
+    # レビューセッションが存在しない場合は終了（エラー状態）
+    if "review_session" not in state:
+        return END
+    
+    return END
 
 
 def should_continue_target_reports(state: State) -> str | bool:
@@ -178,6 +200,10 @@ def main() -> int:
         "--graph", nargs=1, type=str, default=None, help="Output file path for the graph"
     )
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
+    parser.add_argument(
+        "--skip-human-review", action="store_true", 
+        help="Skip human review step for automated workflows"
+    )
 
     args = parser.parse_args()
 
@@ -207,6 +233,7 @@ def main() -> int:
     graph.add_node("report_selector", report_selector)
     graph.add_node("document_summarizer", document_summarizer)
     graph.add_node("summary_integrator", summary_integrator)
+    graph.add_node("human_reviewer", human_reviewer)
 
     # Define graph edges based on page type
     if page_type == "html":
@@ -219,6 +246,7 @@ def main() -> int:
                     HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}"),
                 ],
                 "url": args.url,
+                "skip_human_review": args.skip_human_review,
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
@@ -255,7 +283,18 @@ def main() -> int:
         graph.add_conditional_edges(
             "summary_integrator",
             should_continue_final_summary,
-            {"summary_integrator": "summary_integrator", END: END},
+            {
+                "summary_integrator": "summary_integrator", 
+                "human_reviewer": "human_reviewer",
+                END: END
+            },
+        )
+        
+        # human_reviewerの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "human_reviewer",
+            should_continue_human_review,
+            {END: END},
         )
     else:  # pdf
         # PDFファイルの場合は直接document_summarizerで処理
@@ -269,6 +308,7 @@ def main() -> int:
             ),
             "target_report_index": 0,
             "overview": "",  # summary_integratorで使用
+            "skip_human_review": args.skip_human_review,
         }
 
         # PDFフロー：START -> document_summarizer -> summary_integrator -> END
@@ -289,7 +329,18 @@ def main() -> int:
         graph.add_conditional_edges(
             "summary_integrator",
             should_continue_final_summary,
-            {"summary_integrator": "summary_integrator", END: END},
+            {
+                "summary_integrator": "summary_integrator", 
+                "human_reviewer": "human_reviewer",
+                END: END
+            },
+        )
+        
+        # human_reviewerの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "human_reviewer",
+            should_continue_human_review,
+            {END: END},
         )
 
     memory = MemorySaver()
@@ -304,11 +355,16 @@ def main() -> int:
 
     # Get the final state and output the meeting title
     final_state = graph.get_state(config)
+    final_review_summary = final_state.values.get("final_review_summary", "")
     final_summary = final_state.values.get("final_summary", "")
     overview = final_state.values.get("overview", "")
     url = final_state.values.get("url", "URL")
 
-    if final_summary:
+    # Use the reviewed summary if available, otherwise fall back to original logic
+    if final_review_summary:
+        # Human-reviewed summaryがある場合（最優先）
+        print(f"{final_review_summary}\n{url}")
+    elif final_summary:
         # final_summaryがある場合
         print(f"{final_summary}\n{url}")
     elif overview:

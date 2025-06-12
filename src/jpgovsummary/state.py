@@ -94,3 +94,24 @@ class State(TypedDict):
         description="The retry count for summary_integrator when final_summary exceeds 300 characters",
         default=0,
     )
+    # Human review fields
+    review_session: dict | None = Field(
+        description="Human review session data including Q&A history and improvements",
+        default=None,
+    )
+    review_approved: bool | None = Field(
+        description="Whether the human reviewer approved the final summary",
+        default=None,
+    )
+    review_completed: bool | None = Field(
+        description="Whether the human review process has been completed",
+        default=False,
+    )
+    final_review_summary: str | None = Field(
+        description="The final summary after human review and improvements",
+        default=None,
+    )
+    skip_human_review: bool | None = Field(
+        description="Whether to skip the human review step for automated workflows",
+        default=False,
+    )
