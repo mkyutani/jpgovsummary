@@ -16,6 +16,7 @@ from .agents import (
     report_enumerator,
     report_selector,
     summary_integrator,
+    bluesky_poster,
 )
 from .tools import load_html_as_markdown
 from .utils import is_local_file, get_local_file_path, validate_local_file
@@ -142,12 +143,24 @@ def should_continue_human_review(state: State) -> str | bool:
     # レビューが完了している場合は終了
     review_completed = state.get("review_completed", False)
     if review_completed:
-        return END
+        # skip_bluesky_postingフラグがない場合はBluesky投稿へ
+        skip_bluesky_posting = state.get("skip_bluesky_posting", False)
+        if not skip_bluesky_posting:
+            return "bluesky_poster"
+        else:
+            return END
     
     # レビューセッションが存在しない場合は終了（エラー状態）
     if "review_session" not in state:
         return END
     
+    return END
+
+
+def should_continue_bluesky_posting(state: State) -> str | bool:
+    """
+    bluesky_poster関連の条件分岐（常に終了）
+    """
     return END
 
 
@@ -204,6 +217,10 @@ def main() -> int:
         "--skip-human-review", action="store_true", 
         help="Skip human review step for automated workflows"
     )
+    parser.add_argument(
+        "--skip-bluesky-posting", action="store_true",
+        help="Skip Bluesky posting step"
+    )
 
     args = parser.parse_args()
 
@@ -234,6 +251,7 @@ def main() -> int:
     graph.add_node("document_summarizer", document_summarizer)
     graph.add_node("summary_integrator", summary_integrator)
     graph.add_node("human_reviewer", human_reviewer)
+    graph.add_node("bluesky_poster", bluesky_poster)
 
     # Define graph edges based on page type
     if page_type == "html":
@@ -247,6 +265,7 @@ def main() -> int:
                 ],
                 "url": args.url,
                 "skip_human_review": args.skip_human_review,
+                "skip_bluesky_posting": args.skip_bluesky_posting,
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
@@ -294,6 +313,16 @@ def main() -> int:
         graph.add_conditional_edges(
             "human_reviewer",
             should_continue_human_review,
+            {
+                "bluesky_poster": "bluesky_poster",
+                END: END
+            },
+        )
+        
+        # bluesky_posterの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "bluesky_poster",
+            should_continue_bluesky_posting,
             {END: END},
         )
     else:  # pdf
@@ -309,6 +338,7 @@ def main() -> int:
             "target_report_index": 0,
             "overview": "",  # summary_integratorで使用
             "skip_human_review": args.skip_human_review,
+            "skip_bluesky_posting": args.skip_bluesky_posting,
         }
 
         # PDFフロー：START -> document_summarizer -> summary_integrator -> END
@@ -340,6 +370,16 @@ def main() -> int:
         graph.add_conditional_edges(
             "human_reviewer",
             should_continue_human_review,
+            {
+                "bluesky_poster": "bluesky_poster",
+                END: END
+            },
+        )
+        
+        # bluesky_posterの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "bluesky_poster",
+            should_continue_bluesky_posting,
             {END: END},
         )
 

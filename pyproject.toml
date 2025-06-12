@@ -25,6 +25,7 @@ markitdown = "^0.1.1"
 pygraphviz = "^1.14"
 pypdf2 = "^3.0.1"
 pycryptodome = "^3.23.0"
+langchain-mcp-adapters = "^0.1.7"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.11.12"
