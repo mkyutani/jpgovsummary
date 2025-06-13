@@ -115,3 +115,24 @@ class State(TypedDict):
         description="Whether to skip the human review step for automated workflows",
         default=False,
     )
+    # Bluesky posting fields
+    skip_bluesky_posting: bool | None = Field(
+        description="Whether to skip the Bluesky posting step",
+        default=False,
+    )
+    bluesky_post_requested: bool | None = Field(
+        description="Whether user requested Bluesky posting",
+        default=None,
+    )
+    bluesky_post_completed: bool | None = Field(
+        description="Whether Bluesky posting was completed",
+        default=False,
+    )
+    bluesky_post_content: str | None = Field(
+        description="Content posted to Bluesky",
+        default=None,
+    )
+    bluesky_post_uri: str | None = Field(
+        description="URI of the posted Bluesky content",
+        default=None,
+    )

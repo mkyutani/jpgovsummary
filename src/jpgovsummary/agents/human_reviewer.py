@@ -36,11 +36,7 @@ def human_reviewer(state: State) -> State:
     print("\n" + "="*80)
     print("🔍 HUMAN REVIEW SESSION - FINAL SUMMARY QUALITY CHECK")
     print("="*80)
-    print(f"\n📄 Current Summary ({len(final_summary)} characters):")
-    print("-" * 50)
-    print(final_summary)
-    print("-" * 50)
-    print(f"🔗 URL: {url}")
+    _display_current_summary(final_summary, url=url)
     
     if review_session["iteration"] > 0:
         print(f"\n📊 Review Iteration: {review_session['iteration']}")
@@ -104,6 +100,7 @@ def human_reviewer(state: State) -> State:
                                 "result": improved_summary
                             })
                             print("✅ Improvement applied!")
+                            _display_current_summary(final_summary, url=url)
                         elif result["action"] == "improve" and result["feedback"]:
                             # Apply additional improvement
                             further_improved_summary = _generate_improved_summary(
@@ -117,6 +114,7 @@ def human_reviewer(state: State) -> State:
                             })
                             print(f"\nAI> Further Improved Summary:\n{'-'*50}\n{further_improved_summary}\n{'-'*50}")
                             print("✅ Additional improvement applied!")
+                            _display_current_summary(final_summary, url=url)
                         else:
                             print("❌ Improvement rejected, keeping current summary.")
                     else:
@@ -152,6 +150,7 @@ def human_reviewer(state: State) -> State:
                                 "result": regenerated_summary
                             })
                             print("✅ Regenerated summary applied!")
+                            _display_current_summary(final_summary, url=url)
                         elif result["action"] == "improve" and result["feedback"]:
                             # Apply additional improvement to regenerated summary
                             further_improved_summary = _generate_improved_summary(
@@ -165,6 +164,7 @@ def human_reviewer(state: State) -> State:
                             })
                             print(f"\nAI> Further Improved Summary:\n{'-'*50}\n{further_improved_summary}\n{'-'*50}")
                             print("✅ Additional improvement applied!")
+                            _display_current_summary(final_summary, url=url)
                         else:
                             print("❌ Regeneration rejected, keeping current summary.")
                     else:
@@ -504,6 +504,15 @@ def _extract_regeneration_feedback(llm, user_input: str) -> str:
     except Exception as e:
         logger.error(f"Error in feedback extraction: {str(e)}")
         return ""
+
+
+def _display_current_summary(final_summary: str, url: str) -> None:
+    """現在のサマリーを表示する"""
+    print(f"\n📄 Current Summary ({len(final_summary)} characters):")
+    print("-" * 50)
+    print(final_summary)
+    print("-" * 50)
+    print(f"🔗 URL: {url}")
 
 
 def _safe_input(prompt: str, default: str = "") -> str:
