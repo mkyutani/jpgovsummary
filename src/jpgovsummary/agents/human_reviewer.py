@@ -43,22 +43,55 @@ def human_reviewer(state: State) -> State:
         print(f"💬 Previous Q&A exchanges: {len(review_session['qa_history'])}")
     
     # Interactive review loop
+    print("\n💡 Tips: 改行のみ（空入力）で全画面エディタが起動します")
+    
     while True:
         try:
-            user_input = _safe_input("\nYou> ")
+            user_input = _enhanced_input("\nYou>")
             
-            if not user_input:
-                print("❌ Please provide some input.")
+            # Check for empty input (just Enter) - launch fullscreen editor
+            if not user_input.strip():
+                print("\n📝 全画面エディタを起動します。詳細な改善要求やフィードバックを入力してください。")
+                user_input = _enhanced_input("詳細な改善要求", fullscreen=True)
+                if not user_input.strip():
+                    print("❌ Please provide some input.")
+                    continue
+            
+            # Check for help request
+            if user_input.lower() in ["help", "h", "ヘルプ"]:
+                _display_help()
                 continue
             
             # Use LLM to classify the user's intent
             action_type = _classify_user_intent(llm, user_input)
             
             if action_type == "approve":
-                # Approve and finish
-                print("\n✅ Summary approved! Finishing review session.")
-                state["review_approved"] = True
-                break
+                # Check character limit before approval
+                total_chars = len(final_summary) + len(url) + 1
+                if total_chars <= 300:
+                    # Approve and finish
+                    print("\n✅ Summary approved! Finishing review session.")
+                    state["review_approved"] = True
+                    break
+                else:
+                    # Generate shortened version
+                    print(f"\n📏 Summary is {total_chars} chars (exceeds 300 limit).")
+                    print("✨ Generating shortened version...")
+                    shortened_summary = _generate_shortened_summary(
+                        llm, final_summary, overview, target_report_summaries, url
+                    )
+                    
+                    # Update the summary
+                    final_summary = shortened_summary
+                    state["final_summary"] = final_summary
+                    review_session["improvements"].append({
+                        "request": f"Auto-shorten from {total_chars} to fit 300 char limit",
+                        "result": shortened_summary
+                    })
+                    
+                    _display_current_summary(final_summary, url)
+                    print("✅ Shortened version generated!")
+                    print("\n💬 Please review the shortened version. You can approve, improve further, or provide feedback.")
                 
             elif action_type == "question":
                 # Extract question or ask for clarification
@@ -80,45 +113,21 @@ def human_reviewer(state: State) -> State:
                 # Extract improvement request
                 improvement_request = _extract_improvement_request(llm, user_input)
                 if improvement_request:
+                    print("✨ Generating improved summary...")
                     improved_summary = _generate_improved_summary(
                         llm, final_summary, improvement_request, overview, target_report_summaries, url
                     )
                     
-                    print(f"\nAI> Improved Summary:\n{'-'*50}\n{improved_summary}\n{'-'*50}")
+                    # Apply the improvement immediately
+                    final_summary = improved_summary
+                    state["final_summary"] = final_summary
+                    review_session["improvements"].append({
+                        "request": improvement_request,
+                        "result": improved_summary
+                    })
                     
-                    # Ask for confirmation in natural language
-                    confirmation_input = _safe_input("\nYou> ", default="")
-                    
-                    if confirmation_input:
-                        result = _classify_confirmation_with_feedback(llm, confirmation_input)
-                        
-                        if result["action"] == "accept":
-                            final_summary = improved_summary
-                            state["final_summary"] = final_summary
-                            review_session["improvements"].append({
-                                "request": improvement_request,
-                                "result": improved_summary
-                            })
-                            print("✅ Improvement applied!")
-                            _display_current_summary(final_summary, url=url)
-                        elif result["action"] == "improve" and result["feedback"]:
-                            # Apply additional improvement
-                            further_improved_summary = _generate_improved_summary(
-                                llm, improved_summary, result["feedback"], overview, target_report_summaries, url
-                            )
-                            final_summary = further_improved_summary
-                            state["final_summary"] = final_summary
-                            review_session["improvements"].append({
-                                "request": f"{improvement_request} + {result['feedback']}",
-                                "result": further_improved_summary
-                            })
-                            print(f"\nAI> Further Improved Summary:\n{'-'*50}\n{further_improved_summary}\n{'-'*50}")
-                            print("✅ Additional improvement applied!")
-                            _display_current_summary(final_summary, url=url)
-                        else:
-                            print("❌ Improvement rejected, keeping current summary.")
-                    else:
-                        print("❌ No response provided, keeping current summary.")
+                    _display_current_summary(final_summary, url)
+                    print("✅ Improvement applied!")
                 else:
                     print("📝 Could not extract a clear improvement request.")
                 
@@ -126,52 +135,7 @@ def human_reviewer(state: State) -> State:
                 # Review source materials
                 _display_source_materials(overview, target_report_summaries)
                 
-            elif action_type == "regenerate":
-                # Extract feedback for regeneration
-                feedback = _extract_regeneration_feedback(llm, user_input)
-                if feedback:
-                    regenerated_summary = _regenerate_summary_with_feedback(
-                        llm, final_summary, feedback, overview, target_report_summaries, url
-                    )
-                    
-                    print(f"\nAI> Regenerated Summary:\n{'-'*50}\n{regenerated_summary}\n{'-'*50}")
-                    
-                    # Ask for confirmation in natural language
-                    confirmation_input = _safe_input("\nYou> ", default="")
-                    
-                    if confirmation_input:
-                        result = _classify_confirmation_with_feedback(llm, confirmation_input)
-                        
-                        if result["action"] == "accept":
-                            final_summary = regenerated_summary
-                            state["final_summary"] = final_summary
-                            review_session["improvements"].append({
-                                "request": f"Regeneration: {feedback}",
-                                "result": regenerated_summary
-                            })
-                            print("✅ Regenerated summary applied!")
-                            _display_current_summary(final_summary, url=url)
-                        elif result["action"] == "improve" and result["feedback"]:
-                            # Apply additional improvement to regenerated summary
-                            further_improved_summary = _generate_improved_summary(
-                                llm, regenerated_summary, result["feedback"], overview, target_report_summaries, url
-                            )
-                            final_summary = further_improved_summary
-                            state["final_summary"] = final_summary
-                            review_session["improvements"].append({
-                                "request": f"Regeneration: {feedback} + {result['feedback']}",
-                                "result": further_improved_summary
-                            })
-                            print(f"\nAI> Further Improved Summary:\n{'-'*50}\n{further_improved_summary}\n{'-'*50}")
-                            print("✅ Additional improvement applied!")
-                            _display_current_summary(final_summary, url=url)
-                        else:
-                            print("❌ Regeneration rejected, keeping current summary.")
-                    else:
-                        print("❌ No response provided, keeping current summary.")
-                else:
-                    print("📝 Could not extract clear feedback.")
-                
+
             elif action_type == "cancel":
                 # Cancel review
                 print("\n❌ Review cancelled. Using current summary.")
@@ -193,6 +157,10 @@ def human_reviewer(state: State) -> State:
     # Update review session
     review_session["iteration"] += 1
     state["review_session"] = review_session
+    
+    # Display final confirmed summary
+    print("\n✅ Review completed!")
+    _display_current_summary(final_summary, url=url)
     
     # Update messages with final reviewed summary
     message = HumanMessage(content=f"{final_summary}\n{url}")
@@ -301,15 +269,16 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
             source_context=source_context,
             max_chars=max_chars
         ))
-        return response.content.strip()
+        improved_summary = response.content.strip()
+        
+        return improved_summary
     except Exception as e:
         logger.error(f"Error in summary improvement: {str(e)}")
         return current_summary
 
 
-def _regenerate_summary_with_feedback(llm, current_summary: str, feedback: str,
-                                    overview: str, summaries: list, url: str) -> str:
-    """Completely regenerate summary with comprehensive feedback"""
+def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str) -> str:
+    """Generate a shortened version of the summary to fit 300 character limit"""
     
     source_context = ""
     if summaries:
@@ -322,14 +291,12 @@ def _regenerate_summary_with_feedback(llm, current_summary: str, feedback: str,
     max_chars = max(50, 300 - url_length - 1)
     
     prompt = PromptTemplate(
-        input_variables=["feedback", "current_summary", "overview", "source_context", "max_chars"],
+        input_variables=["current_summary", "overview", "source_context", "max_chars"],
         template="""
-        包括的なフィードバックに基づいて要約を完全に再生成してください。
+        承認された要約が文字数制限を超えているため、短縮版を作成してください。
+        人間が承認した内容の意図と重要な情報を保持しながら、文字数制限内に収めてください。
 
-        **フィードバック:**
-        {feedback}
-
-        **参考（現在の要約）:**
+        **承認された要約:**
         {current_summary}
 
         **概要情報:**
@@ -338,30 +305,34 @@ def _regenerate_summary_with_feedback(llm, current_summary: str, feedback: str,
         **元資料の要約:**
         {source_context}
 
-        **再生成要件:**
-        - フィードバックを全面的に反映する
-        - {max_chars}文字以下で作成する
+        **短縮要件:**
+        - {max_chars}文字以下で作成する（厳守）
+        - 承認された要約の主要な内容と意図を保持する
+        - 最も重要な情報を優先的に含める
         - 実際に書かれている内容のみを使用する
         - 推測や創作は行わない
-        - より良い構成と表現を心がける
-        - 重要な情報を漏らさない
+        - 読みやすく論理的な構成にする
         - 会議名や資料名を適切に含める
-        - 読み手にとって価値のある要約にする
+        - 人間の改善意図を可能な限り反映する
         """
     )
     
     try:
         response = llm.invoke(prompt.format(
-            feedback=feedback,
             current_summary=current_summary,
             overview=overview,
             source_context=source_context,
             max_chars=max_chars
         ))
-        return response.content.strip()
+        shortened_summary = response.content.strip()
+        
+        return shortened_summary
     except Exception as e:
-        logger.error(f"Error in summary regeneration: {str(e)}")
+        logger.error(f"Error in summary shortening: {str(e)}")
         return current_summary
+
+
+
 
 
 def _classify_user_intent(llm, user_input: str) -> str:
@@ -370,23 +341,47 @@ def _classify_user_intent(llm, user_input: str) -> str:
     prompt = PromptTemplate(
         input_variables=["user_input"],
         template="""
-        ユーザーの自然言語入力を以下のアクション分類のいずれかに分類してください。
+        ユーザーの自然言語入力を慎重に分析して、最も適切なアクション分類を決定してください。
 
         **入力:** {user_input}
 
-        **分類カテゴリ:**
-        - approve: 要約を承認・完了する（例：「承認」「OK」「良い」「完了」「終了」）
-        - question: AIに質問する（例：「質問」「なぜ」「どうして」「教えて」「？」）
-        - improve: 改善を要求する（例：「改善」「修正」「変更」「直して」「もっと」）
-        - source: 元資料を確認する（例：「資料」「ソース」「元」「確認」「見たい」）
-        - regenerate: 完全に再生成する（例：「再生成」「作り直し」「最初から」「全面的に」）
-        - cancel: レビューをキャンセルする（例：「キャンセル」「中止」「やめる」「終わり」）
+        **分析手順:**
+        1. まず入力の主要な意図を特定する
+        2. 各カテゴリの定義と照らし合わせる
+        3. 最も適合度の高いカテゴリを選択する
 
-        **出力要件:**
-        - 上記6つのカテゴリのうち1つだけを返す
-        - 英語の小文字で返す（approve, question, improve, source, regenerate, cancel）
-        - 判断に迷う場合は最も近いカテゴリを選ぶ
-        - 分類できない場合は "unknown" を返す
+        **分類カテゴリ（優先度順）:**
+        
+        **approve** - 要約を承認・完了する
+        キーワード: 「承認」「OK」「良い」「完了」「終了」「はい」「いいね」「大丈夫」「問題ない」「採用」
+        判定基準: 現在の要約に満足し、作業を完了したい意図が明確
+        
+        **question** - AIに質問する
+        キーワード: 「質問」「なぜ」「どうして」「教えて」「？」「根拠」「理由」「詳しく」
+        判定基準: 疑問符があるか、説明や詳細を求める意図が明確
+        
+        **source** - 元資料を確認する
+        キーワード: 「資料」「ソース」「元」「確認」「見たい」「原文」「出典」
+        判定基準: 元となる資料や文書を見たい意図が明確
+        
+        **cancel** - レビューをキャンセルする
+        キーワード: 「キャンセル」「中止」「やめる」「終わり」「停止」「中断」
+        判定基準: 作業を中止したい意図が明確
+        
+                 **improve** - 改善を要求する（デフォルト）
+         キーワード: 「改善」「修正」「変更」「直して」「もっと」「作り直し」「全面的に」「追加」「削除」
+         アドバイス: 「〇〇は××です」「実際には」「正確には」「補足すると」「ちなみに」
+         判定基準: 上記以外のすべて、変更・改善を求める意図、または情報提供・アドバイス
+
+                 **判定ルール:**
+         - 複数の意図が混在する場合は、最も強い意図を選ぶ
+         - 曖昧な場合や判断に迷う場合は "improve" を選ぶ
+         - 単語だけでなく、文脈や全体的な意図を重視する
+         - ユーザーが何かを変えたい・良くしたいと思っている場合は "improve"
+         - ユーザーからの情報提供やアドバイス、事実の訂正も "improve" として扱う
+         - 「〇〇は××です」のような情報提供は要約改善のための材料として "improve"
+
+        **出力:** 5つのカテゴリ（approve, question, improve, source, cancel）のうち1つのみを英語小文字で返す
         """
     )
     
@@ -395,14 +390,14 @@ def _classify_user_intent(llm, user_input: str) -> str:
         action_type = response.content.strip().lower()
         
         # Validate the response
-        valid_actions = ["approve", "question", "improve", "source", "regenerate", "cancel"]
+        valid_actions = ["approve", "question", "improve", "source", "cancel"]
         if action_type in valid_actions:
             return action_type
         else:
-            return "unknown"
+            return "improve"  # Default to improve for unclear inputs
     except Exception as e:
         logger.error(f"Error in intent classification: {str(e)}")
-        return "unknown"
+        return "unknown"  # Return unknown on error
 
 
 def _extract_question_from_input(llm, user_input: str) -> str:
@@ -473,50 +468,232 @@ def _extract_improvement_request(llm, user_input: str) -> str:
         return ""
 
 
-def _extract_regeneration_feedback(llm, user_input: str) -> str:
-    """Extract comprehensive feedback for summary regeneration"""
-    
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの入力から要約の再生成に必要な包括的なフィードバックを抽出してください。
 
-        **入力:** {user_input}
-
-        **抽出要件:**
-        - 要約の再生成に必要な詳細な指示として整理する
-        - 構成、内容、スタイル等の改善点を明確にする
-        - 完全な作り直しに必要な情報を含める
-        - フィードバックが不明確な場合は空文字列を返す
-
-        **例:**
-        - 入力: "全体的に作り直して、もっと詳しく" → 出力: "要約全体を作り直し、より詳細で具体的な内容にしてください"
-        - 入力: "構成を変えて時系列で" → 出力: "要約の構成を時系列順に変更して再生成してください"
-
-        **出力:** フィードバック文のみ（説明不要）
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        feedback = response.content.strip()
-        return feedback if feedback and feedback != "空文字列" else ""
-    except Exception as e:
-        logger.error(f"Error in feedback extraction: {str(e)}")
-        return ""
 
 
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
-    print(f"\n📄 Current Summary ({len(final_summary)} characters):")
+    summary_chars = len(final_summary)
+    url_chars = len(url)
+    # 要約 + 改行1文字 + URL = 合計文字数
+    total_chars = summary_chars + url_chars + 1
+    
+    print(f"\n📄 Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
     print("-" * 50)
     print(final_summary)
     print("-" * 50)
     print(f"🔗 URL: {url}")
 
 
-def _safe_input(prompt: str, default: str = "") -> str:
-    """Safely get user input with Unicode error handling"""
+
+
+
+
+def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
+    """Full-screen editor using prompt_toolkit"""
+    try:
+        from prompt_toolkit.application import Application
+        from prompt_toolkit.buffer import Buffer
+        from prompt_toolkit.layout.containers import HSplit, Window
+        from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+        from prompt_toolkit.layout.layout import Layout
+        from prompt_toolkit.key_binding import KeyBindings
+        from prompt_toolkit.formatted_text import HTML
+        import os
+        
+        # Create buffer for text input
+        from prompt_toolkit.document import Document
+        buffer = Buffer(multiline=True, document=Document(default))
+        
+        # Create key bindings
+        kb = KeyBindings()
+        
+        @kb.add('c-s')  # Ctrl+S to save and exit
+        def _(event):
+            event.app.exit(result=buffer.text)
+        
+        @kb.add('c-q')  # Ctrl+Q to quit without saving
+        def _(event):
+            event.app.exit(result=default)
+        
+        @kb.add('c-x', 'c-c')  # Ctrl+X Ctrl+C to save and exit
+        def _(event):
+            event.app.exit(result=buffer.text)
+        
+        @kb.add('c-c')  # Ctrl+C to raise KeyboardInterrupt
+        def _(event):
+            raise KeyboardInterrupt()
+        
+        # Help overlay state
+        help_visible = [False]  # Use list to make it mutable in nested function
+        
+        @kb.add('c-g')  # Ctrl+G for help
+        def _(event):
+            # Toggle help overlay
+            help_visible[0] = not help_visible[0]
+            event.app.invalidate()  # Refresh display
+        
+        # Create dynamic status line
+        def get_status_text():
+            line_count = buffer.document.line_count
+            cursor_line = buffer.document.cursor_position_row + 1
+            cursor_col = buffer.document.cursor_position_col + 1
+            char_count = len(buffer.text)
+            return f'行 {cursor_line}/{line_count}  列 {cursor_col}  文字数 {char_count}'
+        
+        # Help content function
+        def get_help_content():
+            if help_visible[0]:
+                return HTML('''<style bg="ansiyellow" fg="ansiblack">
+=== 全画面エディタ ヘルプ ===
+
+キーバインド:
+^S (Ctrl+S)     : 保存して終了
+^Q (Ctrl+Q)     : キャンセル（保存しない）
+^G (Ctrl+G)     : このヘルプを表示/非表示
+^C (Ctrl+C)     : 強制終了
+
+編集機能:
+- 通常の文字入力、削除、改行が可能
+- 日本語入力対応
+- 上下左右矢印キーでカーソル移動
+- Home/End キーで行の始端/終端へ移動
+
+このエディタで長文の改善要求や
+フィードバックを快適に入力できます。
+
+もう一度 ^G を押すとヘルプを閉じます
+=== ヘルプ終了 ===
+</style>''')
+            else:
+                return HTML('')
+        
+        # Create layout with nano-style interface
+        main_content = [
+            # Header with title
+            Window(
+                content=FormattedTextControl(
+                    HTML(f'<style bg="ansiblue" fg="ansiwhite"><b> 全画面エディタ - {prompt_text} </b></style>')
+                ),
+                height=1,
+                dont_extend_height=True,
+            ),
+            # Main editing area - takes remaining space
+            Window(
+                content=BufferControl(buffer=buffer),
+                wrap_lines=True,
+            ),
+        ]
+        
+        # Add help overlay if visible
+        help_window = Window(
+            content=FormattedTextControl(get_help_content),
+            height=lambda: 18 if help_visible[0] else 0,
+            dont_extend_height=True,
+        )
+        main_content.append(help_window)
+        
+        # Add status and help bar
+        main_content.extend([
+            # Status line
+            Window(
+                content=FormattedTextControl(
+                    lambda: HTML(f'<style bg="ansigray" fg="ansiwhite"> {get_status_text()} </style>')
+                ),
+                height=1,
+                dont_extend_height=True,
+            ),
+            # Bottom help bar (nano-style)
+            Window(
+                content=FormattedTextControl(
+                    HTML('<style bg="ansiwhite" fg="ansiblack">'
+                         ' ^S 保存終了   ^Q キャンセル   ^G ヘルプ   ^C 中断 '
+                         '</style>')
+                ),
+                height=1,
+                dont_extend_height=True,
+            ),
+        ])
+        
+        root_container = HSplit(main_content)
+        
+        layout = Layout(root_container)
+        
+        # Create application
+        app = Application(
+            layout=layout,
+            key_bindings=kb,
+            full_screen=True,
+            mouse_support=False  # WSL2環境での安定性のため無効化
+        )
+        
+        # Run the application
+        result = app.run()
+        return result.strip() if result else default
+        
+    except ImportError as e:
+        print(f"⚠️  prompt_toolkitが利用できません: {e}")
+        print("📝 標準入力を使用します。")
+        return _safe_input_fallback(prompt_text, default)
+    except Exception as e:
+        print(f"⚠️  全画面エディタでエラーが発生しました: {e}")
+        print(f"   エラーの種類: {type(e).__name__}")
+        print(f"   詳細: {str(e)}")
+        print("📝 標準入力を使用します。")
+        return _safe_input_fallback(prompt_text, default)
+
+
+def _is_wsl_environment() -> bool:
+    """Check if running in WSL environment"""
+    import os
+    try:
+        # Check multiple WSL indicators
+        return (
+            'microsoft' in os.uname().release.lower() or
+            'wsl' in os.environ.get('WSL_DISTRO_NAME', '').lower() or
+            os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
+        )
+    except:
+        return False
+
+
+def _enhanced_input(prompt_text: str, fullscreen: bool = False, default: str = "") -> str:
+    """Enhanced input with prompt_toolkit support for Japanese input"""
+    
+    # Full-screen editor mode
+    if fullscreen:
+        return _fullscreen_editor(prompt_text, default)
+    
+    try:
+        from prompt_toolkit import prompt
+        from prompt_toolkit.history import InMemoryHistory
+        
+        # Create history for this session
+        history = InMemoryHistory()
+        result = prompt(f"{prompt_text} ", history=history, default=default)
+        
+        # If empty input, launch fullscreen editor
+        if not result.strip():
+            editor_result = _fullscreen_editor(prompt_text.rstrip(': '), default)
+            if editor_result is not None:
+                return editor_result
+            else:
+                print("キャンセルされました。")
+                return ""
+        
+        return result.strip()
+        
+    except ImportError:
+        # prompt_toolkitが利用できない場合のフォールバック
+        print("⚠️  prompt_toolkitが利用できません。標準入力を使用します。")
+        return _safe_input_fallback(prompt_text, default)
+    except (EOFError, KeyboardInterrupt):
+        # Re-raise these as they should be handled by the main loop
+        raise
+
+
+def _safe_input_fallback(prompt: str, default: str = "") -> str:
+    """Fallback input function when prompt_toolkit is not available"""
     try:
         return input(prompt).strip()
     except UnicodeDecodeError as e:
@@ -526,6 +703,11 @@ def _safe_input(prompt: str, default: str = "") -> str:
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
         raise
+
+
+def _safe_input(prompt: str, default: str = "") -> str:
+    """Wrapper function for backward compatibility"""
+    return _enhanced_input(prompt, fullscreen=False, default=default)
 
 
 def _classify_confirmation_with_feedback(llm, user_input: str) -> dict:
@@ -643,6 +825,41 @@ def _classify_confirmation(llm, user_input: str) -> bool:
         return False
 
 
+def _display_help() -> None:
+    """Display help information for the human reviewer"""
+    print("\n" + "="*60)
+    print("📖 HUMAN REVIEWER HELP")
+    print("="*60)
+    print("\n🎯 利用可能なアクション:")
+    print("   • 質問する: 要約について詳しく聞く")
+    print("   • 改善要求: 具体的な改善点を指摘")
+    print("   • ソース確認: 元資料を確認")
+    print("   • 承認: 要約を承認して完了")
+    print("   • キャンセル: レビューを中止")
+    print("   • 全画面エディタ: 空入力（Enterのみ）で起動")
+    
+    print("\n📝 入力方法:")
+    print("   • 通常入力: そのまま入力してEnter")
+    print("   • 全画面エディタ: 空入力（Enterのみ）で自動起動")
+    print("   • 日本語入力: WSL環境でも快適に入力可能")
+    print("   • 履歴呼び出し: 上下矢印キーで過去の入力を呼び出し")
+    print("   • 全画面終了: Ctrl+S (保存), Ctrl+Q (キャンセル)")
+    
+    print("\n💡 入力例:")
+    print("   • 「この部分をもっと詳しく説明して」")
+    print("   • 「数字を具体的にして、結論を最初に」")
+    print("   • 「全体的に作り直して時系列で整理」")
+    print("   • 「OK」「承認」「いいね」(承認)")
+    print("   • 「source」「ソース」(元資料確認)")
+    
+    print("\n⌨️  ショートカット:")
+    print("   • Ctrl+C: レビュー中断")
+    print("   • Enter: 空入力で全画面エディタ起動")
+    print("   • Ctrl+S: 全画面エディタで保存して終了")
+    print("   • Ctrl+Q: 全画面エディタでキャンセル")
+    print("="*60)
+
+
 def _display_source_materials(overview: str, summaries: list) -> None:
     """Display source materials for human review"""
     
@@ -662,4 +879,4 @@ def _display_source_materials(overview: str, summaries: list) -> None:
     else:
         print("\n❌ No document summaries available.")
     
-    _safe_input("\n📖 Press Enter to continue...", default="") 
+    _enhanced_input("\n📖 Press Enter to continue...", default="") 
