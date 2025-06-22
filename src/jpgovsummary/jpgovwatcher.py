@@ -168,9 +168,10 @@ def should_continue_target_reports(state: State) -> str | bool:
     """
     target_reports関連の条件分岐
     """
-    # target_reportsが存在しない場合は終了
+    # target_reportsが存在しない場合もsummary_integratorへ遷移
+    # overviewをfinal_summaryとして使用
     if "target_reports" not in state:
-        return END
+        return "summary_integrator"
     
     # target_report_indexがなければ0で初期化
     if "target_report_index" not in state:
@@ -185,23 +186,9 @@ def should_continue_target_reports(state: State) -> str | bool:
     # target_report_summariesがある場合のみsummary_integratorへ
     target_report_summaries = state.get("target_report_summaries", [])
 
-    # 有効な要約（contentが存在する）が1つ以上あるかチェック
-    valid_summaries = [s for s in target_report_summaries if s.content.strip()]
-
-    # valid_summariesが存在し、実際にcontentがある場合のみsummary_integratorへ
-    if valid_summaries:
-        # すべてのcontentを連結して空文字列でないかチェック
-        combined_content = "".join(s.content for s in valid_summaries).strip()
-        if combined_content:
-            return "summary_integrator"
-    
-    # 要約がない場合は、overviewを最終要約として設定
-    overview = state.get("overview", "")
-    url = state.get("url", "")
-    message = HumanMessage(content=f"{overview}\n{url}")
-    state["messages"] = [message]
-    state["final_summary"] = overview
-    return END
+    # すべての資料の要約が完了した場合はsummary_integratorへ遷移
+    # summary_integratorで有効な要約がない場合のハンドリングを行う
+    return "summary_integrator"
 
 
 def main() -> int:
