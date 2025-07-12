@@ -233,33 +233,77 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     url_length = len(url)
     max_chars = max(50, 300 - url_length - 1)
     
-    prompt = PromptTemplate(
-        input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
-        template="""
-        現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
+    # Check if the improvement request contains new material to be summarized
+    if _contains_substantial_material(improvement_request):
+        # Handle new material summarization
+        prompt = PromptTemplate(
+            input_variables=["improvement_request", "overview", "source_context", "max_chars"],
+            template="""
+            人間から新しい資料内容が提供されました。この内容を要約してください。
 
-        **改善要求:**
-        {improvement_request}
+            **提供された新しい資料:**
+            {improvement_request}
 
-        **現在の要約:**
-        {current_summary}
+            **参考情報（概要）:**
+            {overview}
 
-        **概要情報:**
-        {overview}
+            **既存の元資料の要約:**
+            {source_context}
 
-        **元資料の要約:**
-        {source_context}
+            **要約要件:**
+            - 提供された新しい資料の内容を中心に要約する
+            - {max_chars}文字以下で作成する
+            - 実際に書かれている内容のみを使用する
+            - 推測や創作は行わない
+            - 重要な情報を漏らさない
+            - 読みやすく論理的な構成にする
+            - 会議名や資料名を適切に含める
+            - 新しい資料の構造や要点を適切に反映する
+            """
+        )
+        
+        try:
+            response = llm.invoke(prompt.format(
+                improvement_request=improvement_request,
+                overview=overview,
+                source_context=source_context,
+                max_chars=max_chars
+            ))
+            improved_summary = response.content.strip()
+            return improved_summary
+        except Exception as e:
+            logger.error(f"Error in new material summarization: {str(e)}")
+            return current_summary
+    
+    else:
+        # Handle regular improvement request
+        prompt = PromptTemplate(
+            input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
+            template="""
+            現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
 
-        **改善要件:**
-        - 改善要求に具体的に対応する
-        - {max_chars}文字以下で作成する
-        - 実際に書かれている内容のみを使用する
-        - 推測や創作は行わない
-        - 重要な情報を漏らさない
-        - 読みやすく論理的な構成にする
-        - 会議名や資料名を適切に含める
-        """
-    )
+            **改善要求:**
+            {improvement_request}
+
+            **現在の要約:**
+            {current_summary}
+
+            **概要情報:**
+            {overview}
+
+            **元資料の要約:**
+            {source_context}
+
+            **改善要件:**
+            - 改善要求に具体的に対応する
+            - {max_chars}文字以下で作成する
+            - 実際に書かれている内容のみを使用する
+            - 推測や創作は行わない
+            - 重要な情報を漏らさない
+            - 読みやすく論理的な構成にする
+            - 会議名や資料名を適切に含める
+            """
+        )
     
     try:
         response = llm.invoke(prompt.format(
@@ -371,7 +415,8 @@ def _classify_user_intent(llm, user_input: str) -> str:
                  **improve** - 改善を要求する（デフォルト）
          キーワード: 「改善」「修正」「変更」「直して」「もっと」「作り直し」「全面的に」「追加」「削除」
          アドバイス: 「〇〇は××です」「実際には」「正確には」「補足すると」「ちなみに」
-         判定基準: 上記以外のすべて、変更・改善を求める意図、または情報提供・アドバイス
+         新資料提供: 「以下の内容を要約」「現在の要約は破棄」「新しい資料」「###」「①②③」
+         判定基準: 上記以外のすべて、変更・改善を求める意図、情報提供・アドバイス、新資料提供
 
                  **判定ルール:**
          - 複数の意図が混在する場合は、最も強い意図を選ぶ
@@ -380,6 +425,7 @@ def _classify_user_intent(llm, user_input: str) -> str:
          - ユーザーが何かを変えたい・良くしたいと思っている場合は "improve"
          - ユーザーからの情報提供やアドバイス、事実の訂正も "improve" として扱う
          - 「〇〇は××です」のような情報提供は要約改善のための材料として "improve"
+         - 新しい資料内容を提供している場合も "improve" として扱う（内容は保持される）
 
         **出力:** 5つのカテゴリ（approve, question, improve, source, cancel）のうち1つのみを英語小文字で返す
         """
@@ -437,6 +483,11 @@ def _extract_question_from_input(llm, user_input: str) -> str:
 def _extract_improvement_request(llm, user_input: str) -> str:
     """Extract improvement request from user's natural language input"""
     
+    # First, check if the input contains substantial new material that should be preserved
+    if _contains_substantial_material(user_input):
+        # Return the input as-is when it contains new material to be summarized
+        return user_input
+    
     prompt = PromptTemplate(
         input_variables=["user_input"],
         template="""
@@ -468,7 +519,49 @@ def _extract_improvement_request(llm, user_input: str) -> str:
         return ""
 
 
-
+def _contains_substantial_material(user_input: str) -> bool:
+    """Check if user input contains substantial new material content"""
+    
+    # Check for indicators of new material content
+    material_indicators = [
+        "以下の内容を要約",
+        "以下の資料を要約",
+        "以下のテキストを要約",
+        "新しい資料",
+        "現在の要約は破棄",
+        "要約を破棄",
+        "###",  # Markdown headers
+        "##",   # Markdown headers
+        "①", "②", "③", "④", "⑤",  # Numbered lists
+        "１章", "２章", "３章",  # Chapter indicators
+        "〇", "○",  # Bullet points
+        "・",   # Bullet points
+    ]
+    
+    # Check for substantial length (likely contains material)
+    if len(user_input) > 500:
+        return True
+    
+    # Check for material indicators
+    for indicator in material_indicators:
+        if indicator in user_input:
+            return True
+    
+    # Check for structured content patterns
+    lines = user_input.split('\n')
+    structured_lines = 0
+    for line in lines:
+        line = line.strip()
+        if line and (line.startswith('・') or line.startswith('○') or line.startswith('〇') or 
+                    line.startswith('①') or line.startswith('②') or line.startswith('③') or
+                    line.startswith('④') or line.startswith('⑤') or line.startswith('#')):
+            structured_lines += 1
+    
+    # If many lines are structured content, likely new material
+    if structured_lines >= 5:
+        return True
+    
+    return False
 
 
 def _display_current_summary(final_summary: str, url: str) -> None:
