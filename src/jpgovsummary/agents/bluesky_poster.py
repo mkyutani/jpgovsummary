@@ -1,6 +1,8 @@
 import sys
 import asyncio
 import os
+import json
+import re
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import PromptTemplate
@@ -59,6 +61,61 @@ def bluesky_poster(state: State) -> State:
         state["bluesky_post_completed"] = True
         
     return state
+
+
+def _parse_ssky_response(result_str: str) -> dict:
+    """
+    ssky mcp-serverのレスポンスを解析して成功/失敗を判定
+    """
+    try:
+        # JSONパースを試行
+        parsed = json.loads(result_str)
+        
+        # 新しいフォーマットの判定（優先）
+        if "status" in parsed:
+            if parsed["status"] == "success":
+                return {
+                    "success": True,
+                    "uri": parsed.get("uri"),
+                    "message": parsed.get("message", "Posted successfully")
+                }
+            elif parsed["status"] in ["error", "failure"]:
+                return {
+                    "success": False,
+                    "message": parsed.get("message", "Failed to post")
+                }
+        
+        # 後方互換性：uriフィールドの存在チェック
+        if "uri" in parsed and parsed["uri"]:
+            return {
+                "success": True,
+                "uri": parsed["uri"],
+                "message": "Posted successfully"
+            }
+        
+        # JSONは解析できたが、成功判定できない
+        return {
+            "success": False,
+            "message": f"Unknown response format: {result_str}"
+        }
+        
+    except json.JSONDecodeError:
+        # JSONではない場合、従来の文字列パターンマッチング
+        success_indicators = [
+            "posted successfully", "successfully posted", "posted to bluesky",
+            "post has been", "successfully sent", "message posted"
+        ]
+        
+        if any(indicator in result_str.lower() for indicator in success_indicators):
+            return {
+                "success": True,
+                "message": "Posted successfully"
+            }
+        
+        return {
+            "success": False,
+            "message": f"Unable to parse response: {result_str}"
+        }
 
 
 async def _post_to_bluesky_via_mcp(content: str) -> dict:
@@ -162,7 +219,6 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                 result_str = str(result_to_check)
                 
                 # "Error: 4xx" または "Error: 5xx" パターンをチェック
-                import re
                 error_pattern = re.compile(r'Error:\s*[45]\d\d')
                 is_error = bool(error_pattern.search(result_str)) or "Command timed out" in result_str
                 
@@ -174,50 +230,38 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                         "error": str(result_to_check)
                     }
                 else:
-                    # 成功判定 - JSONレスポンスや投稿成功の兆候を確認
+                    # 成功判定 - 新しいssky mcp-serverのJSONフォーマットに対応
                     result_str = str(result_to_check)
                     
-                    # JSONレスポンスの場合（成功の場合）
-                    if '"author"' in result_str and '"uri"' in result_str:
+                    # 新しい成功判定ロジックを使用
+                    parsed_result = _parse_ssky_response(result_str)
+                    
+                    if parsed_result["success"]:
                         return {
                             "success": True,
                             "content": content,
                             "result": result_str,
                             "error": None
                         }
-                    
-                    # その他の成功パターン
-                    success_indicators = [
-                        "posted successfully", "successfully posted", "posted to bluesky",
-                        "post has been", "successfully sent", "message posted"
-                    ]
-                    
-                    if any(indicator in result_str.lower() for indicator in success_indicators):
+                    else:
+                        # ツールが実行されていて、エラーでない場合は成功とみなす（フォールバック）
+                        if actual_tool_result is not None:
+                            logger.info("Tool was executed and no error patterns detected, assuming success")
+                            return {
+                                "success": True,
+                                "content": content,
+                                "result": result_str,
+                                "error": None
+                            }
+                        
+                        # 曖昧な場合
+                        logger.warning(f"Ambiguous result, cannot determine success/failure: {result_str}")
                         return {
-                            "success": True,
+                            "success": False,
                             "content": content,
-                            "result": result_str,
-                            "error": None
+                            "result": None,
+                            "error": parsed_result["message"]
                         }
-                    
-                    # ツールが実行されていて、エラーでない場合は成功とみなす
-                    if actual_tool_result is not None:
-                        logger.info("Tool was executed and no error patterns detected, assuming success")
-                        return {
-                            "success": True,
-                            "content": content,
-                            "result": result_str,
-                            "error": None
-                        }
-                    
-                    # 曖昧な場合
-                    logger.warning(f"Ambiguous result, cannot determine success/failure: {result_str}")
-                    return {
-                        "success": False,
-                        "content": content,
-                        "result": None,
-                        "error": f"Unclear posting result: {result_str}"
-                    }
             else:
                 return {
                     "success": False,
