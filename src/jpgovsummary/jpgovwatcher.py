@@ -164,6 +164,30 @@ def should_continue_bluesky_posting(state: State) -> str | bool:
     return END
 
 
+def should_continue_overview_only(state: State) -> str | bool:
+    """
+    overview_generator後の条件分岐
+    overview-onlyモードの場合はhuman_reviewerまたはbluesky_posterへ直接遷移
+    """
+    overview_only = state.get("overview_only", False)
+    skip_human_review = state.get("skip_human_review", False)
+    
+    if overview_only:
+        # overview-onlyの場合は直接human_reviewerへ
+        if skip_human_review:
+            # human_reviewも省略する場合はbluesky_posterへ
+            skip_bluesky_posting = state.get("skip_bluesky_posting", False)
+            if skip_bluesky_posting:
+                return END
+            else:
+                return "bluesky_poster"
+        else:
+            return "human_reviewer"
+    else:
+        # 通常のフローは report_enumerator へ
+        return "report_enumerator"
+
+
 def should_continue_target_reports(state: State) -> str | bool:
     """
     target_reports関連の条件分岐
@@ -207,6 +231,10 @@ def main() -> int:
     parser.add_argument(
         "--skip-bluesky-posting", action="store_true",
         help="Skip Bluesky posting step"
+    )
+    parser.add_argument(
+        "--overview-only", action="store_true",
+        help="Generate overview only without processing additional documents"
     )
 
     args = parser.parse_args()
@@ -253,6 +281,7 @@ def main() -> int:
                 "url": args.url,
                 "skip_human_review": args.skip_human_review,
                 "skip_bluesky_posting": args.skip_bluesky_posting,
+                "overview_only": args.overview_only,
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
@@ -260,7 +289,19 @@ def main() -> int:
 
         graph.add_edge(START, "main_content_extractor")
         graph.add_edge("main_content_extractor", "overview_generator")
-        graph.add_edge("overview_generator", "report_enumerator")
+        
+        # overview_generatorの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "overview_generator",
+            should_continue_overview_only,
+            {
+                "report_enumerator": "report_enumerator",
+                "human_reviewer": "human_reviewer",
+                "bluesky_poster": "bluesky_poster",
+                END: END,
+            },
+        )
+        
         graph.add_edge("report_enumerator", "report_selector")
 
         # report_selectorの後の条件分岐を追加

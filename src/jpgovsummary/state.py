@@ -136,3 +136,7 @@ class State(TypedDict):
         description="URI of the posted Bluesky content",
         default=None,
     )
+    overview_only: bool | None = Field(
+        description="Whether to generate overview only without processing additional documents",
+        default=False,
+    )

@@ -20,13 +20,22 @@ def human_reviewer(state: State) -> State:
     overview = state.get("overview", "")
     url = state.get("url", "")
     target_report_summaries = state.get("target_report_summaries", [])
+    overview_only = state.get("overview_only", False)
+    
+    # Determine what to review based on mode
+    if overview_only:
+        current_summary = overview
+        review_title = "🔍 OVERVIEW-ONLY MODE - REVIEWING GENERATED OVERVIEW"
+    else:
+        current_summary = final_summary
+        review_title = "🔍 HUMAN REVIEW SESSION - FINAL SUMMARY QUALITY CHECK"
     
     # Initialize review session if not exists
     if "review_session" not in state:
         state["review_session"] = {
             "iteration": 0,
             "qa_history": [],
-            "original_summary": final_summary,
+            "original_summary": current_summary,
             "improvements": []
         }
     
@@ -34,9 +43,9 @@ def human_reviewer(state: State) -> State:
     
     # Display current summary for human review
     print("\n" + "="*80)
-    print("🔍 HUMAN REVIEW SESSION - FINAL SUMMARY QUALITY CHECK")
+    print(review_title)
     print("="*80)
-    _display_current_summary(final_summary, url=url)
+    _display_current_summary(current_summary, url=url)
     
     if review_session["iteration"] > 0:
         print(f"\n📊 Review Iteration: {review_session['iteration']}")
@@ -67,7 +76,7 @@ def human_reviewer(state: State) -> State:
             
             if action_type == "approve":
                 # Check character limit before approval
-                total_chars = len(final_summary) + len(url) + 1
+                total_chars = len(current_summary) + len(url) + 1
                 if total_chars <= 300:
                     # Approve and finish
                     print("\n✅ Summary approved! Finishing review session.")
@@ -78,18 +87,25 @@ def human_reviewer(state: State) -> State:
                     print(f"\n📏 Summary is {total_chars} chars (exceeds 300 limit).")
                     print("✨ Generating shortened version...")
                     shortened_summary = _generate_shortened_summary(
-                        llm, final_summary, overview, target_report_summaries, url
+                        llm, current_summary, overview, target_report_summaries, url
                     )
                     
                     # Update the summary
-                    final_summary = shortened_summary
-                    state["final_summary"] = final_summary
+                    current_summary = shortened_summary
+                    if overview_only:
+                        # overview-onlyモードの場合はoverviewを更新
+                        state["overview"] = current_summary
+                    else:
+                        # 通常モードの場合はfinal_summaryを更新
+                        state["final_summary"] = current_summary
+                        final_summary = current_summary
+                    
                     review_session["improvements"].append({
                         "request": f"Auto-shorten from {total_chars} to fit 300 char limit",
                         "result": shortened_summary
                     })
                     
-                    _display_current_summary(final_summary, url)
+                    _display_current_summary(current_summary, url)
                     print("✅ Shortened version generated!")
                     print("\n💬 Please review the shortened version. You can approve, improve further, or provide feedback.")
                 
@@ -97,7 +113,7 @@ def human_reviewer(state: State) -> State:
                 # Extract question or ask for clarification
                 question = _extract_question_from_input(llm, user_input)
                 if question:
-                    ai_response = _ask_ai_question(llm, question, final_summary, overview, target_report_summaries)
+                    ai_response = _ask_ai_question(llm, question, current_summary, overview, target_report_summaries)
                     print(f"\nAI> {ai_response}")
                     
                     # Record Q&A
@@ -115,18 +131,25 @@ def human_reviewer(state: State) -> State:
                 if improvement_request:
                     print("✨ Generating improved summary...")
                     improved_summary = _generate_improved_summary(
-                        llm, final_summary, improvement_request, overview, target_report_summaries, url
+                        llm, current_summary, improvement_request, overview, target_report_summaries, url
                     )
                     
                     # Apply the improvement immediately
-                    final_summary = improved_summary
-                    state["final_summary"] = final_summary
+                    current_summary = improved_summary
+                    if overview_only:
+                        # overview-onlyモードの場合はoverviewを更新
+                        state["overview"] = current_summary
+                    else:
+                        # 通常モードの場合はfinal_summaryを更新
+                        state["final_summary"] = current_summary
+                        final_summary = current_summary
+                    
                     review_session["improvements"].append({
                         "request": improvement_request,
                         "result": improved_summary
                     })
                     
-                    _display_current_summary(final_summary, url)
+                    _display_current_summary(current_summary, url)
                     print("✅ Improvement applied!")
                 else:
                     print("📝 Could not extract a clear improvement request.")
@@ -160,14 +183,14 @@ def human_reviewer(state: State) -> State:
     
     # Display final confirmed summary
     print("\n✅ Review completed!")
-    _display_current_summary(final_summary, url=url)
+    _display_current_summary(current_summary, url=url)
     
     # Update messages with final reviewed summary
-    message = HumanMessage(content=f"{final_summary}\n{url}")
+    message = HumanMessage(content=f"{current_summary}\n{url}")
     
     # Add review metadata to state
     state["review_completed"] = True
-    state["final_review_summary"] = final_summary
+    state["final_review_summary"] = current_summary
     
     return {**state, "messages": [message]}
 
