@@ -25,148 +25,119 @@ def human_reviewer(state: State) -> State:
     # Determine what to review based on mode
     if overview_only:
         current_summary = overview
-        review_title = "🔍 OVERVIEW-ONLY MODE - REVIEWING GENERATED OVERVIEW"
     else:
         current_summary = final_summary
-        review_title = "🔍 HUMAN REVIEW SESSION - FINAL SUMMARY QUALITY CHECK"
     
     # Initialize review session if not exists
     if "review_session" not in state:
         state["review_session"] = {
-            "iteration": 0,
-            "qa_history": [],
             "original_summary": current_summary,
             "improvements": []
         }
     
     review_session = state["review_session"]
     
-    # Display current summary for human review
-    print("\n" + "="*80)
-    print(review_title)
-    print("="*80)
-    _display_current_summary(current_summary, url=url)
-    
-    if review_session["iteration"] > 0:
-        print(f"\n📊 Review Iteration: {review_session['iteration']}")
-        print(f"💬 Previous Q&A exchanges: {len(review_session['qa_history'])}")
-    
-    # Interactive review loop
-    print("\n💡 Tips: 改行のみ（空入力）で全画面エディタが起動します")
-    
     while True:
         try:
-            user_input = _enhanced_input("\nYou>")
-            
-            # Check for empty input (just Enter) - launch fullscreen editor
-            if not user_input.strip():
-                print("\n📝 全画面エディタを起動します。詳細な改善要求やフィードバックを入力してください。")
-                user_input = _enhanced_input("詳細な改善要求", fullscreen=True)
-                if not user_input.strip():
-                    print("❌ Please provide some input.")
-                    continue
-            
-            # Check for help request
-            if user_input.lower() in ["help", "h", "ヘルプ"]:
-                _display_help()
-                continue
-            
-            # Use LLM to classify the user's intent
-            action_type = _classify_user_intent(llm, user_input)
-            
-            if action_type == "approve":
-                # Check character limit before approval
-                total_chars = len(current_summary) + len(url) + 1
-                if total_chars <= 300:
-                    # Approve and finish
-                    print("\n✅ Summary approved! Finishing review session.")
-                    state["review_approved"] = True
-                    break
-                else:
-                    # Generate shortened version
-                    print(f"\n📏 Summary is {total_chars} chars (exceeds 300 limit).")
-                    print("✨ Generating shortened version...")
-                    shortened_summary = _generate_shortened_summary(
-                        llm, current_summary, overview, target_report_summaries, url
-                    )
-                    
-                    # Update the summary
-                    current_summary = shortened_summary
-                    if overview_only:
-                        # overview-onlyモードの場合はoverviewを更新
-                        state["overview"] = current_summary
-                    else:
-                        # 通常モードの場合はfinal_summaryを更新
-                        state["final_summary"] = current_summary
-                        final_summary = current_summary
-                    
-                    review_session["improvements"].append({
-                        "request": f"Auto-shorten from {total_chars} to fit 300 char limit",
-                        "result": shortened_summary
-                    })
-                    
-                    _display_current_summary(current_summary, url)
-                    print("✅ Shortened version generated!")
-                    print("\n💬 Please review the shortened version. You can approve, improve further, or provide feedback.")
-                
-            elif action_type == "question":
-                # Extract question or ask for clarification
-                question = _extract_question_from_input(llm, user_input)
-                if question:
-                    ai_response = _ask_ai_question(llm, question, current_summary, overview, target_report_summaries)
-                    print(f"\nAI> {ai_response}")
-                    
-                    # Record Q&A
-                    review_session["qa_history"].append({
-                        "type": "human_question",
-                        "content": question,
-                        "ai_response": ai_response
-                    })
-                else:
-                    print("❓ Could not extract a clear question.")
-                
-            elif action_type == "improve":
-                # Extract improvement request
-                improvement_request = _extract_improvement_request(llm, user_input)
-                if improvement_request:
-                    print("✨ Generating improved summary...")
-                    improved_summary = _generate_improved_summary(
-                        llm, current_summary, improvement_request, overview, target_report_summaries, url
-                    )
-                    
-                    # Apply the improvement immediately
-                    current_summary = improved_summary
-                    if overview_only:
-                        # overview-onlyモードの場合はoverviewを更新
-                        state["overview"] = current_summary
-                    else:
-                        # 通常モードの場合はfinal_summaryを更新
-                        state["final_summary"] = current_summary
-                        final_summary = current_summary
-                    
-                    review_session["improvements"].append({
-                        "request": improvement_request,
-                        "result": improved_summary
-                    })
-                    
-                    _display_current_summary(current_summary, url)
-                    print("✅ Improvement applied!")
-                else:
-                    print("📝 Could not extract a clear improvement request.")
-                
-            elif action_type == "source":
-                # Review source materials
-                _display_source_materials(overview, target_report_summaries)
-                
+            _display_current_summary(current_summary, url=url)
 
-            elif action_type == "cancel":
-                # Cancel review
-                print("\n❌ Review cancelled. Using current summary.")
-                state["review_approved"] = False
-                break
+            # Check character limit before approval
+            total_chars = len(current_summary) + len(url) + 1
+            if total_chars > 300:
+                # Generate shortened version
+                print(f"📏 Summary is {total_chars} chars (exceeds 300 limit).")
+                print("✨ Generating shortened version...")
+                shortened_summary = _generate_shortened_summary(
+                    llm, current_summary, overview, target_report_summaries, url
+                )
                 
+                # Update the summary
+                current_summary = shortened_summary
+                if overview_only:
+                    state["overview"] = current_summary
+                else:
+                    state["final_summary"] = current_summary
+                    final_summary = current_summary
+                
+                review_session["improvements"].append({
+                    "request": f"Auto-shorten from {total_chars} to fit 300 char limit",
+                    "result": shortened_summary
+                })
+                continue
+
+            print("💬 OK to approve, improvement request, or Enter for editor")
+            user_input = _enhanced_input("You>")
+
+            # Check if user wants to approve
+            if _is_positive_response(user_input):
+                # Approve and finish
+                state["review_approved"] = True
+                break
+            elif user_input.strip():
+                # Process 1-line improvement request directly
+                print(f"🔄")
+                new_summary = _generate_improved_summary(llm, current_summary, user_input, overview, target_report_summaries, url)
+                if new_summary and new_summary != current_summary:
+                    current_summary = new_summary
+                    if overview_only:
+                        state["overview"] = current_summary
+                    else:
+                        state["final_summary"] = current_summary
+                        final_summary = current_summary
+                    
+                    review_session["improvements"].append({
+                        "request": user_input,
+                        "result": new_summary
+                    })
+                else:
+                    print("❌ Could not process improvement request.")
             else:
-                print("❌ Could not understand your request.")
+                # Empty input - launch fullscreen editor with current summary pre-filled
+                editor_content = f"""# Summary (edit directly if needed)
+{current_summary}
+
+# Improvement instructions (optional)
+
+
+# How to use:
+# - Edit the summary above directly, OR
+# - Write improvement instructions below, OR
+# - Both approaches work!
+# Save with Ctrl+S when done.
+"""
+
+                # Calculate cursor position to place it at the start of improvement instructions section
+                lines_before_improvement = editor_content.split('\n')
+                improvement_line_index = -1
+                for i, line in enumerate(lines_before_improvement):
+                    if line.strip() == '# Improvement instructions (optional)':
+                        improvement_line_index = i + 1  # +1 to place cursor right after the header
+                        break
+                
+                cursor_position = 0
+                if improvement_line_index > 0:
+                    cursor_position = len('\n'.join(lines_before_improvement[:improvement_line_index])) + 1
+
+                result = _enhanced_input("サマリー編集・改善要求", fullscreen=True, initial_content=editor_content, cursor_position=cursor_position)
+
+                if result and result.strip():
+                    new_summary = _process_editor_result(llm, result, current_summary, overview, target_report_summaries, url)
+                    if new_summary:
+                        current_summary = new_summary
+                        if overview_only:
+                            state["overview"] = current_summary
+                        else:
+                            state["final_summary"] = current_summary
+                            final_summary = current_summary
+                        
+                        review_session["improvements"].append({
+                            "request": "Editor input",
+                            "result": new_summary
+                        })
+                    else:
+                        print("❌ Could not process editor input.")
+                else:
+                    print("📝 No changes made.")
                 
         except KeyboardInterrupt:
             print("\n\n⚠️  Review interrupted. Using current summary.")
@@ -178,68 +149,21 @@ def human_reviewer(state: State) -> State:
             break
     
     # Update review session
-    review_session["iteration"] += 1
     state["review_session"] = review_session
-    
+
     # Display final confirmed summary
     print("\n✅ Review completed!")
     _display_current_summary(current_summary, url=url)
-    
+
     # Update messages with final reviewed summary
     message = HumanMessage(content=f"{current_summary}\n{url}")
-    
+
     # Add review metadata to state
     state["review_completed"] = True
     state["final_review_summary"] = current_summary
-    
+
     return {**state, "messages": [message]}
 
-
-def _ask_ai_question(llm, question: str, summary: str, overview: str, summaries: list) -> str:
-    """Ask AI a specific question about the summary"""
-    
-    source_context = ""
-    if summaries:
-        source_context = "\n\n".join([
-            f"【{s.name}】\n{s.content}" for s in summaries if s.content
-        ])
-    
-    prompt = PromptTemplate(
-        input_variables=["question", "summary", "overview", "source_context"],
-        template="""
-        人間から以下の質問を受けました。要約の内容と元資料を参照して、正確で詳細な回答をしてください。
-
-        **質問:** {question}
-
-        **現在の要約:**
-        {summary}
-
-        **概要情報:**
-        {overview}
-
-        **元資料の要約:**
-        {source_context}
-
-        **回答要件:**
-        - 質問に対して具体的で正確な回答をする
-        - 根拠となる資料や情報を明示する
-        - 不明な点があれば素直に「不明」と答える
-        - 推測や創作は行わない
-        - 必要に応じて追加の質問を提案する
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(
-            question=question,
-            summary=summary,
-            overview=overview,
-            source_context=source_context
-        ))
-        return response.content.strip()
-    except Exception as e:
-        logger.error(f"Error in AI question answering: {str(e)}")
-        return f"申し訳ありませんが、質問への回答中にエラーが発生しました: {str(e)}"
 
 
 def _generate_improved_summary(llm, current_summary: str, improvement_request: str, 
@@ -398,149 +322,70 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
         logger.error(f"Error in summary shortening: {str(e)}")
         return current_summary
 
-
-
-
-
-def _classify_user_intent(llm, user_input: str) -> str:
-    """Classify user's natural language input into action categories"""
+def _is_positive_response(user_input: str) -> bool:
+    """肯定的な応答かどうかを判定"""
+    positive_keywords = [
+        # English
+        "ok", "okay", "gj", "good", "great", "nice", "perfect", "yes", "yep", "yeah", "fine", "excellent", "awesome", "cool",
+        # Japanese
+        "いいね", "良い", "よい", "承認", "はい", "オーケー", "グッド", "ナイス", "完璧", "最高", "素晴らしい", "いい", "よし",
+        # Emoji/symbols
+        "👍", "✅", "🆗", "👌", "💯", "🎉", "😊", "😍", "🥰",
+        # Variations
+        "おk", "ｏｋ", "ＯＫ", "オーキー", "だいじょうぶ", "大丈夫", "問題ない", "もんだいない"
+    ]
     
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの自然言語入力を慎重に分析して、最も適切なアクション分類を決定してください。
+    # Check exact matches (case insensitive)
+    normalized_input = user_input.lower().strip()
+    return normalized_input in positive_keywords
 
-        **入力:** {user_input}
 
-        **分析手順:**
-        1. まず入力の主要な意図を特定する
-        2. 各カテゴリの定義と照らし合わせる
-        3. 最も適合度の高いカテゴリを選択する
-
-        **分類カテゴリ（優先度順）:**
+def _process_editor_result(llm, editor_result: str, current_summary: str, overview: str, summaries: list, url: str) -> str:
+    """エディタ結果を処理して新しいサマリーを生成"""
+    
+    lines = editor_result.strip().split('\n')
+    
+    # Find the sections
+    current_section = []
+    improvement_section = []
+    
+    in_current = False
+    in_improvement = False
+    
+    for line in lines:
+        if line.strip().startswith('# Summary'):
+            in_current = True
+            in_improvement = False
+            continue
+        elif line.strip().startswith('# Improvement instructions'):
+            in_current = False
+            in_improvement = True
+            continue
+        elif line.strip().startswith('# How to use'):
+            in_current = False
+            in_improvement = False
+            continue
         
-        **approve** - 要約を承認・完了する
-        キーワード: 「承認」「OK」「良い」「完了」「終了」「はい」「いいね」「大丈夫」「問題ない」「採用」
-        判定基準: 現在の要約に満足し、作業を完了したい意図が明確
-        
-        **question** - AIに質問する
-        キーワード: 「質問」「なぜ」「どうして」「教えて」「？」「根拠」「理由」「詳しく」
-        判定基準: 疑問符があるか、説明や詳細を求める意図が明確
-        
-        **source** - 元資料を確認する
-        キーワード: 「資料」「ソース」「元」「確認」「見たい」「原文」「出典」
-        判定基準: 元となる資料や文書を見たい意図が明確
-        
-        **cancel** - レビューをキャンセルする
-        キーワード: 「キャンセル」「中止」「やめる」「終わり」「停止」「中断」
-        判定基準: 作業を中止したい意図が明確
-        
-                 **improve** - 改善を要求する（デフォルト）
-         キーワード: 「改善」「修正」「変更」「直して」「もっと」「作り直し」「全面的に」「追加」「削除」
-         アドバイス: 「〇〇は××です」「実際には」「正確には」「補足すると」「ちなみに」
-         新資料提供: 「以下の内容を要約」「現在の要約は破棄」「新しい資料」「###」「①②③」
-         判定基準: 上記以外のすべて、変更・改善を求める意図、情報提供・アドバイス、新資料提供
-
-                 **判定ルール:**
-         - 複数の意図が混在する場合は、最も強い意図を選ぶ
-         - 曖昧な場合や判断に迷う場合は "improve" を選ぶ
-         - 単語だけでなく、文脈や全体的な意図を重視する
-         - ユーザーが何かを変えたい・良くしたいと思っている場合は "improve"
-         - ユーザーからの情報提供やアドバイス、事実の訂正も "improve" として扱う
-         - 「〇〇は××です」のような情報提供は要約改善のための材料として "improve"
-         - 新しい資料内容を提供している場合も "improve" として扱う（内容は保持される）
-
-        **出力:** 5つのカテゴリ（approve, question, improve, source, cancel）のうち1つのみを英語小文字で返す
-        """
-    )
+        if in_current:
+            current_section.append(line)
+        elif in_improvement:
+            improvement_section.append(line)
     
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        action_type = response.content.strip().lower()
-        
-        # Validate the response
-        valid_actions = ["approve", "question", "improve", "source", "cancel"]
-        if action_type in valid_actions:
-            return action_type
-        else:
-            return "improve"  # Default to improve for unclear inputs
-    except Exception as e:
-        logger.error(f"Error in intent classification: {str(e)}")
-        return "unknown"  # Return unknown on error
-
-
-def _extract_question_from_input(llm, user_input: str) -> str:
-    """Extract a clear question from user's natural language input"""
+    # Extract edited summary and improvement requests
+    edited_summary = '\n'.join(current_section).strip()
+    improvement_request = '\n'.join(improvement_section).strip()
     
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの入力から質問を抽出してください。
-
-        **入力:** {user_input}
-
-        **抽出要件:**
-        - 明確な質問文として整理する
-        - 「？」で終わる疑問文にする
-        - 要約に関する質問として適切に整形する
-        - 質問が不明確な場合は空文字列を返す
-
-        **例:**
-        - 入力: "この部分について詳しく教えて" → 出力: "この部分について詳しく教えてください？"
-        - 入力: "なぜこの結論になったの" → 出力: "なぜこの結論になったのですか？"
-        - 入力: "根拠は" → 出力: "この要約の根拠は何ですか？"
-
-        **出力:** 質問文のみ（説明不要）
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        question = response.content.strip()
-        return question if question and question != "空文字列" else ""
-    except Exception as e:
-        logger.error(f"Error in question extraction: {str(e)}")
-        return ""
-
-
-def _extract_improvement_request(llm, user_input: str) -> str:
-    """Extract improvement request from user's natural language input"""
-    
-    # First, check if the input contains substantial new material that should be preserved
-    if _contains_substantial_material(user_input):
-        # Return the input as-is when it contains new material to be summarized
-        return user_input
-    
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの入力から改善要求を抽出してください。
-
-        **入力:** {user_input}
-
-        **抽出要件:**
-        - 具体的な改善指示として整理する
-        - 何をどのように改善したいかを明確にする
-        - 要約の改善に関する指示として適切に整形する
-        - 改善要求が不明確な場合は空文字列を返す
-
-        **例:**
-        - 入力: "もっと簡潔にして" → 出力: "要約をより簡潔で読みやすくしてください"
-        - 入力: "数字を追加して" → 出力: "具体的な数字やデータを追加してください"
-        - 入力: "結論を明確に" → 出力: "結論部分をより明確に表現してください"
-
-        **出力:** 改善要求文のみ（説明不要）
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        improvement = response.content.strip()
-        return improvement if improvement and improvement != "空文字列" else ""
-    except Exception as e:
-        logger.error(f"Error in improvement extraction: {str(e)}")
-        return ""
-
+    # Check if user modified the summary directly
+    if edited_summary and edited_summary != current_summary:
+        print(f"Direct edit detected: using edited summary")
+        return edited_summary
+    elif improvement_request:
+        print(f"🔄 {improvement_request}")
+        return _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url)
+    else:
+        # No changes made
+        print("No changes detected")
+        return current_summary
 
 def _contains_substantial_material(user_input: str) -> bool:
     """Check if user input contains substantial new material content"""
@@ -586,7 +431,6 @@ def _contains_substantial_material(user_input: str) -> bool:
     
     return False
 
-
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
     summary_chars = len(final_summary)
@@ -594,18 +438,13 @@ def _display_current_summary(final_summary: str, url: str) -> None:
     # 要約 + 改行1文字 + URL = 合計文字数
     total_chars = summary_chars + url_chars + 1
     
-    print(f"\n📄 Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
+    print(f"📄 Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
     print("-" * 50)
     print(final_summary)
     print("-" * 50)
     print(f"🔗 URL: {url}")
 
-
-
-
-
-
-def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
+def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -> str:
     """Full-screen editor using prompt_toolkit"""
     try:
         from prompt_toolkit.application import Application
@@ -617,9 +456,18 @@ def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
         from prompt_toolkit.formatted_text import HTML
         import os
         
-        # Create buffer for text input
+        # Create buffer for text input with proper initialization
         from prompt_toolkit.document import Document
-        buffer = Buffer(multiline=True, document=Document(default))
+        buffer = Buffer(multiline=True)
+        
+        # Set initial content explicitly
+        if initial_content:
+            buffer.text = initial_content
+            # Set cursor position - use provided position or default to end
+            if cursor_position is not None and 0 <= cursor_position <= len(initial_content):
+                buffer.cursor_position = cursor_position
+            else:
+                buffer.cursor_position = len(initial_content)
         
         # Create key bindings
         kb = KeyBindings()
@@ -630,7 +478,7 @@ def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
         
         @kb.add('c-q')  # Ctrl+Q to quit without saving
         def _(event):
-            event.app.exit(result=default)
+            event.app.exit(result=initial_content)
         
         @kb.add('c-x', 'c-c')  # Ctrl+X Ctrl+C to save and exit
         def _(event):
@@ -689,7 +537,7 @@ def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
             # Header with title
             Window(
                 content=FormattedTextControl(
-                    HTML(f'<style bg="ansiblue" fg="ansiwhite"><b> 全画面エディタ - {prompt_text} </b></style>')
+                    HTML(f'<style bg="ansiblue" fg="ansiwhite"><b> Fullscreen Editor </b></style>')
                 ),
                 height=1,
                 dont_extend_height=True,
@@ -742,43 +590,29 @@ def _fullscreen_editor(prompt_text: str, default: str = "") -> str:
             full_screen=True,
             mouse_support=False  # WSL2環境での安定性のため無効化
         )
-        
+
+        # Force refresh after initialization
+        def refresh_on_start():
+            app.invalidate()
+
         # Run the application
         result = app.run()
-        return result.strip() if result else default
+        return result.strip() if result else initial_content
         
     except ImportError as e:
-        print(f"⚠️  prompt_toolkitが利用できません: {e}")
-        print("📝 標準入力を使用します。")
-        return _safe_input_fallback(prompt_text, default)
+        print(f"⚠️ No prompt_toolkit: {e}")
+        return initial_content
     except Exception as e:
-        print(f"⚠️  全画面エディタでエラーが発生しました: {e}")
-        print(f"   エラーの種類: {type(e).__name__}")
-        print(f"   詳細: {str(e)}")
-        print("📝 標準入力を使用します。")
-        return _safe_input_fallback(prompt_text, default)
+        print(f"⚠️ Exception occurred: {type(e).__name__}")
+        print(f"   Detail: {str(e)}")
+        return initial_content
 
-
-def _is_wsl_environment() -> bool:
-    """Check if running in WSL environment"""
-    import os
-    try:
-        # Check multiple WSL indicators
-        return (
-            'microsoft' in os.uname().release.lower() or
-            'wsl' in os.environ.get('WSL_DISTRO_NAME', '').lower() or
-            os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-        )
-    except:
-        return False
-
-
-def _enhanced_input(prompt_text: str, fullscreen: bool = False, default: str = "") -> str:
+def _enhanced_input(prompt_text: str, fullscreen: bool = False, initial_content: str = "", cursor_position: int = None) -> str:
     """Enhanced input with prompt_toolkit support for Japanese input"""
     
     # Full-screen editor mode
     if fullscreen:
-        return _fullscreen_editor(prompt_text, default)
+        return _fullscreen_editor(initial_content, cursor_position)
     
     try:
         from prompt_toolkit import prompt
@@ -786,213 +620,26 @@ def _enhanced_input(prompt_text: str, fullscreen: bool = False, default: str = "
         
         # Create history for this session
         history = InMemoryHistory()
-        result = prompt(f"{prompt_text} ", history=history, default=default)
-        
-        # If empty input, launch fullscreen editor
-        if not result.strip():
-            editor_result = _fullscreen_editor(prompt_text.rstrip(': '), default)
-            if editor_result is not None:
-                return editor_result
-            else:
-                print("キャンセルされました。")
-                return ""
+        result = prompt(f"{prompt_text} ", history=history, default=initial_content)
         
         return result.strip()
         
     except ImportError:
         # prompt_toolkitが利用できない場合のフォールバック
-        print("⚠️  prompt_toolkitが利用できません。標準入力を使用します。")
-        return _safe_input_fallback(prompt_text, default)
+        print("⚠️  prompt_toolkit not available. Using standard input.")
+        return _safe_input_fallback(prompt_text, initial_content)
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
         raise
 
-
-def _safe_input_fallback(prompt: str, default: str = "") -> str:
+def _safe_input_fallback(prompt: str, fallback_content: str = "") -> str:
     """Fallback input function when prompt_toolkit is not available"""
     try:
         return input(prompt).strip()
     except UnicodeDecodeError as e:
-        print(f"❌ 文字エンコーディングエラーが発生しました: {e}")
-        print("💡 入力に使用できない文字が含まれています。")
-        return default
+        print(f"❌ Character encoding error occurred: {e}")
+        print("💡 Input contains unsupported characters.")
+        return fallback_content
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
         raise
-
-
-def _safe_input(prompt: str, default: str = "") -> str:
-    """Wrapper function for backward compatibility"""
-    return _enhanced_input(prompt, fullscreen=False, default=default)
-
-
-def _classify_confirmation_with_feedback(llm, user_input: str) -> dict:
-    """Classify user response to accept/reject with potential additional feedback
-    
-    Returns:
-        dict: {
-            "action": "accept" | "reject" | "improve",
-            "feedback": str | None
-        }
-    """
-    
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの入力を分析して、以下のいずれかに分類してください：
-
-        1. "accept" - 承認・受け入れ（yes, ok, いいね、承認、など）
-        2. "reject" - 拒否・却下（no, だめ、却下、やり直し、など）  
-        3. "improve" - 追加の改善提案が含まれている
-
-        ユーザー入力: "{user_input}"
-
-        **分類ルール:**
-        - 明確に受け入れる意思が示されている場合は "accept"
-        - 明確に拒否する意思が示されている場合は "reject"
-        - 具体的な改善点や変更要求が含まれている場合は "improve"
-        - 曖昧な場合は "reject" を選ぶ
-
-        **出力形式:**
-        action: [accept/reject/improve]
-        feedback: [改善提案がある場合のみ、その内容を抽出]
-
-        例：
-        - "yes" → action: accept, feedback: 
-        - "もう少し詳しく" → action: improve, feedback: もう少し詳しく説明してほしい
-        - "数字を具体的にして、あと結論を最初に" → action: improve, feedback: 数字を具体的にして、結論を最初に持ってきてほしい
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        content = response.content.strip()
-        
-        action = "reject"  # default
-        feedback = None
-        
-        for line in content.split("\n"):
-            line = line.strip()
-            if line.startswith("action:"):
-                action_part = line.split(":", 1)[1].strip()
-                if action_part in ["accept", "reject", "improve"]:
-                    action = action_part
-            elif line.startswith("feedback:"):
-                feedback_part = line.split(":", 1)[1].strip()
-                if feedback_part:
-                    feedback = feedback_part
-        
-        return {"action": action, "feedback": feedback}
-        
-    except Exception as e:
-        logger.error(f"Error in confirmation classification: {str(e)}")
-        return {"action": "reject", "feedback": None}
-
-
-def _classify_confirmation(llm, user_input: str) -> bool:
-    """Classify user's natural language input as acceptance or rejection"""
-    
-    prompt = PromptTemplate(
-        input_variables=["user_input"],
-        template="""
-        ユーザーの自然言語入力が「承認・受け入れ」か「拒否・却下」かを判定してください。
-
-        **入力:** {user_input}
-
-        **判定基準:**
-        
-        **承認・受け入れの例:**
-        - 「はい」「いいえ」「OK」「良い」「承認」「受け入れます」
-        - 「それで良い」「問題ない」「大丈夫」「採用」
-        - 「yes」「accept」「approve」「good」「fine」
-        - 「そうしてください」「お願いします」「進めて」
-        
-        **拒否・却下の例:**
-        - 「いいえ」「だめ」「NG」「拒否」「却下」「やめて」
-        - 「良くない」「問題がある」「不適切」「違う」
-        - 「no」「reject」「deny」「bad」「wrong」
-        - 「やり直し」「別の方法で」「変更して」
-
-        **出力要件:**
-        - 承認の場合: "true"
-        - 拒否の場合: "false"
-        - 判断に迷う場合は文脈から最も適切な方を選ぶ
-        - 不明確な場合は "false" を返す（安全側に倒す）
-
-        **出力:** "true" または "false" のみ（説明不要）
-        """
-    )
-    
-    try:
-        response = llm.invoke(prompt.format(user_input=user_input))
-        result = response.content.strip().lower()
-        
-        # Validate and convert to boolean
-        if result == "true":
-            return True
-        elif result == "false":
-            return False
-        else:
-            # If LLM returns unexpected format, default to False (safe side)
-            logger.warning(f"Unexpected confirmation classification result: {result}")
-            return False
-    except Exception as e:
-        logger.error(f"Error in confirmation classification: {str(e)}")
-        return False
-
-
-def _display_help() -> None:
-    """Display help information for the human reviewer"""
-    print("\n" + "="*60)
-    print("📖 HUMAN REVIEWER HELP")
-    print("="*60)
-    print("\n🎯 利用可能なアクション:")
-    print("   • 質問する: 要約について詳しく聞く")
-    print("   • 改善要求: 具体的な改善点を指摘")
-    print("   • ソース確認: 元資料を確認")
-    print("   • 承認: 要約を承認して完了")
-    print("   • キャンセル: レビューを中止")
-    print("   • 全画面エディタ: 空入力（Enterのみ）で起動")
-    
-    print("\n📝 入力方法:")
-    print("   • 通常入力: そのまま入力してEnter")
-    print("   • 全画面エディタ: 空入力（Enterのみ）で自動起動")
-    print("   • 日本語入力: WSL環境でも快適に入力可能")
-    print("   • 履歴呼び出し: 上下矢印キーで過去の入力を呼び出し")
-    print("   • 全画面終了: Ctrl+S (保存), Ctrl+Q (キャンセル)")
-    
-    print("\n💡 入力例:")
-    print("   • 「この部分をもっと詳しく説明して」")
-    print("   • 「数字を具体的にして、結論を最初に」")
-    print("   • 「全体的に作り直して時系列で整理」")
-    print("   • 「OK」「承認」「いいね」(承認)")
-    print("   • 「source」「ソース」(元資料確認)")
-    
-    print("\n⌨️  ショートカット:")
-    print("   • Ctrl+C: レビュー中断")
-    print("   • Enter: 空入力で全画面エディタ起動")
-    print("   • Ctrl+S: 全画面エディタで保存して終了")
-    print("   • Ctrl+Q: 全画面エディタでキャンセル")
-    print("="*60)
-
-
-def _display_source_materials(overview: str, summaries: list) -> None:
-    """Display source materials for human review"""
-    
-    print("\n" + "="*60)
-    print("📚 SOURCE MATERIALS REVIEW")
-    print("="*60)
-    
-    if overview:
-        print(f"\n📋 Overview:\n{'-'*30}\n{overview}\n")
-    
-    if summaries:
-        print(f"📄 Document Summaries ({len(summaries)} documents):")
-        for i, summary in enumerate(summaries, 1):
-            print(f"\n{i}. 【{summary.name}】")
-            print(f"   URL: {summary.url}")
-            print(f"   Content: {summary.content[:200]}{'...' if len(summary.content) > 200 else ''}")
-    else:
-        print("\n❌ No document summaries available.")
-    
-    _enhanced_input("\n📖 Press Enter to continue...", default="") 
