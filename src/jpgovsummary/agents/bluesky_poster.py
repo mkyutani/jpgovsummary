@@ -33,7 +33,7 @@ def bluesky_poster(state: State) -> State:
         
         # ユーザーに投稿意思を確認
         if _ask_user_for_bluesky_posting(final_summary, url, post_content):
-            print("\n📤 Posting to Bluesky...")
+            print("📤 Posting to Bluesky...")
             
             # MCPClientを使ってBluesky投稿を実行
             post_result = asyncio.run(_post_to_bluesky_via_mcp(post_content))
@@ -304,7 +304,7 @@ def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> 
     # シンプルなY/n確認
     while True:
         try:
-            response = _safe_input("Blueskyに投稿しますか？ (Y/n): ").strip()
+            response = _safe_input("Post to Bluesky? (Y/n): ").strip()
             
             # デフォルトはYes（Enterのみでも投稿）
             if response == "" or response.lower() in ['y', 'yes']:
@@ -312,7 +312,7 @@ def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> 
             elif response.lower() in ['n', 'no']:
                 return False
             else:
-                print("❌ Y/y/yes または N/n/no で回答してください。")
+                print("❌ Please answer Y/y/yes or N/n/no.")
                 
         except (KeyboardInterrupt, EOFError):
             return False
@@ -323,8 +323,8 @@ def _safe_input(prompt: str, default: str = "") -> str:
     try:
         return input(prompt).strip()
     except UnicodeDecodeError as e:
-        print(f"❌ 文字エンコーディングエラーが発生しました: {e}")
-        print("💡 入力に使用できない文字が含まれています。")
+        print(f"❌ Character encoding error occurred: {e}")
+        print("💡 Input contains unusable characters.")
         return default
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
