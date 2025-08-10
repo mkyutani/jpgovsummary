@@ -67,55 +67,50 @@ def _parse_ssky_response(result_str: str) -> dict:
     """
     ssky mcp-serverのレスポンスを解析して成功/失敗を判定
     """
+    def _extract_uri(parsed: dict) -> str:
+        """URIを抽出するヘルパー関数"""
+        uri = parsed.get("uri")
+        if not uri and "data" in parsed and isinstance(parsed["data"], list) and len(parsed["data"]) > 0:
+            uri = parsed["data"][0].get("uri")
+        return uri
+
+    def _success_response(parsed: dict, default_msg: str = "Posted successfully") -> dict:
+        """成功レスポンスを生成するヘルパー関数"""
+        return {
+            "success": True,
+            "uri": _extract_uri(parsed),
+            "message": parsed.get("message", default_msg)
+        }
+
+    def _error_response(message: str) -> dict:
+        """エラーレスポンスを生成するヘルパー関数"""
+        return {"success": False, "message": message}
+
     try:
-        # JSONパースを試行
         parsed = json.loads(result_str)
         
-        # 新しいフォーマットの判定（優先）
-        if "status" in parsed:
-            if parsed["status"] == "success":
-                return {
-                    "success": True,
-                    "uri": parsed.get("uri"),
-                    "message": parsed.get("message", "Posted successfully")
-                }
-            elif parsed["status"] in ["error", "failure"]:
-                return {
-                    "success": False,
-                    "message": parsed.get("message", "Failed to post")
-                }
+        # HTTPステータスコードベースの判定（最優先）
+        http_code = parsed.get("http_code")
+        if http_code is not None:
+            return _success_response(parsed) if 200 <= http_code < 300 else _error_response(parsed.get("message", f"HTTP error {http_code}"))
         
-        # 後方互換性：uriフィールドの存在チェック
-        if "uri" in parsed and parsed["uri"]:
-            return {
-                "success": True,
-                "uri": parsed["uri"],
-                "message": "Posted successfully"
-            }
+        # statusフィールドベースの判定
+        status = parsed.get("status")
+        if status in ["success", "ok"]:
+            return _success_response(parsed)
+        elif status in ["error", "failure"]:
+            return _error_response(parsed.get("message", "Failed to post"))
         
-        # JSONは解析できたが、成功判定できない
-        return {
-            "success": False,
-            "message": f"Unknown response format: {result_str}"
-        }
+        # 後方互換性：URIの存在チェック
+        if parsed.get("uri"):
+            return _success_response(parsed)
+        
+        return _error_response(f"Unknown response format: {result_str}")
         
     except json.JSONDecodeError:
-        # JSONではない場合、従来の文字列パターンマッチング
-        success_indicators = [
-            "posted successfully", "successfully posted", "posted to bluesky",
-            "post has been", "successfully sent", "message posted"
-        ]
-        
-        if any(indicator in result_str.lower() for indicator in success_indicators):
-            return {
-                "success": True,
-                "message": "Posted successfully"
-            }
-        
-        return {
-            "success": False,
-            "message": f"Unable to parse response: {result_str}"
-        }
+        # JSONではない場合、文字列パターンマッチング
+        success_indicators = ["posted successfully", "successfully posted", "posted to bluesky", "post has been", "successfully sent", "message posted"]
+        return {"success": True, "message": "Posted successfully"} if any(indicator in result_str.lower() for indicator in success_indicators) else _error_response(f"Unable to parse response: {result_str}")
 
 
 async def _post_to_bluesky_via_mcp(content: str) -> dict:
