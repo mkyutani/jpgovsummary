@@ -180,77 +180,34 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     url_length = len(url)
     max_chars = max(50, 300 - url_length - 1)
     
-    # Check if the improvement request contains new material to be summarized
-    if _contains_substantial_material(improvement_request):
-        # Handle new material summarization
-        prompt = PromptTemplate(
-            input_variables=["improvement_request", "overview", "source_context", "max_chars"],
-            template="""
-            人間から新しい資料内容が提供されました。この内容を要約してください。
+    # Handle improvement request
+    prompt = PromptTemplate(
+        input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
+        template="""
+        現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
 
-            **提供された新しい資料:**
-            {improvement_request}
+        **改善要求:**
+        {improvement_request}
 
-            **参考情報（概要）:**
-            {overview}
+        **現在の要約:**
+        {current_summary}
 
-            **既存の元資料の要約:**
-            {source_context}
+        **概要情報:**
+        {overview}
 
-            **要約要件:**
-            - 提供された新しい資料の内容を中心に要約する
-            - {max_chars}文字以下で作成する
-            - 実際に書かれている内容のみを使用する
-            - 推測や創作は行わない
-            - 重要な情報を漏らさない
-            - 読みやすく論理的な構成にする
-            - 会議名や資料名を適切に含める
-            - 新しい資料の構造や要点を適切に反映する
-            """
-        )
-        
-        try:
-            response = llm.invoke(prompt.format(
-                improvement_request=improvement_request,
-                overview=overview,
-                source_context=source_context,
-                max_chars=max_chars
-            ))
-            improved_summary = response.content.strip()
-            return improved_summary
-        except Exception as e:
-            logger.error(f"Error in new material summarization: {str(e)}")
-            return current_summary
-    
-    else:
-        # Handle regular improvement request
-        prompt = PromptTemplate(
-            input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
-            template="""
-            現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
+        **元資料の要約:**
+        {source_context}
 
-            **改善要求:**
-            {improvement_request}
-
-            **現在の要約:**
-            {current_summary}
-
-            **概要情報:**
-            {overview}
-
-            **元資料の要約:**
-            {source_context}
-
-            **改善要件:**
-            - 改善要求に具体的に対応する
-            - {max_chars}文字以下で作成する
-            - 実際に書かれている内容のみを使用する
-            - 推測や創作は行わない
-            - 重要な情報を漏らさない
-            - 読みやすく論理的な構成にする
-            - 会議名や資料名を適切に含める
-            """
-        )
+        **改善要件:**
+        - 改善要求に具体的に対応する
+        - {max_chars}文字以下で作成する
+        - 実際に書かれている内容のみを使用する
+        - 推測や創作は行わない
+        - 重要な情報を漏らさない
+        - 読みやすく論理的な構成にする
+        - 会議名や資料名を適切に含める
+        """
+    )
     
     try:
         response = llm.invoke(prompt.format(
@@ -266,7 +223,6 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     except Exception as e:
         logger.error(f"Error in summary improvement: {str(e)}")
         return current_summary
-
 
 def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str) -> str:
     """Generate a shortened version of the summary to fit 300 character limit"""
@@ -326,13 +282,13 @@ def _is_positive_response(user_input: str) -> bool:
     """肯定的な応答かどうかを判定"""
     positive_keywords = [
         # English
-        "ok", "okay", "gj", "good", "great", "nice", "perfect", "yes", "yep", "yeah", "fine", "excellent", "awesome", "cool",
+        "ok", "okay", "gj", "good", "great", "nice", "perfect", "yes", "yep", "yeah", "fine", "excellent", "awesome", "cool", "okay", "go",
         # Japanese
         "いいね", "良い", "よい", "承認", "はい", "オーケー", "グッド", "ナイス", "完璧", "最高", "素晴らしい", "いい", "よし",
         # Emoji/symbols
         "👍", "✅", "🆗", "👌", "💯", "🎉", "😊", "😍", "🥰",
         # Variations
-        "おk", "ｏｋ", "ＯＫ", "オーキー", "だいじょうぶ", "大丈夫", "問題ない", "もんだいない"
+        "おk", "おｋ", "ｏｋ", "ＯＫ", "オーキー", "だいじょうぶ", "大丈夫", "問題ない", "もんだいない"
     ]
     
     # Check exact matches (case insensitive)
@@ -375,11 +331,21 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
     edited_summary = '\n'.join(current_section).strip()
     improvement_request = '\n'.join(improvement_section).strip()
     
-    # Check if user modified the summary directly
-    if edited_summary and edited_summary != current_summary:
+    # Check if user modified the summary directly and/or provided improvement instructions
+    has_direct_edit = edited_summary and edited_summary != current_summary
+    has_improvement_request = improvement_request
+    
+    if has_direct_edit and has_improvement_request:
+        # Both direct edit and improvement request: first apply direct edit, then improvement
+        print(f"Direct edit detected, applying improvements to edited summary")
+        print(f"🔄 {improvement_request}")
+        return _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url)
+    elif has_direct_edit:
+        # Only direct edit
         print(f"Direct edit detected: using edited summary")
         return edited_summary
-    elif improvement_request:
+    elif has_improvement_request:
+        # Only improvement request
         print(f"🔄 {improvement_request}")
         return _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url)
     else:
@@ -387,49 +353,7 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
         print("No changes detected")
         return current_summary
 
-def _contains_substantial_material(user_input: str) -> bool:
-    """Check if user input contains substantial new material content"""
-    
-    # Check for indicators of new material content
-    material_indicators = [
-        "以下の内容を要約",
-        "以下の資料を要約",
-        "以下のテキストを要約",
-        "新しい資料",
-        "現在の要約は破棄",
-        "要約を破棄",
-        "###",  # Markdown headers
-        "##",   # Markdown headers
-        "①", "②", "③", "④", "⑤",  # Numbered lists
-        "１章", "２章", "３章",  # Chapter indicators
-        "〇", "○",  # Bullet points
-        "・",   # Bullet points
-    ]
-    
-    # Check for substantial length (likely contains material)
-    if len(user_input) > 500:
-        return True
-    
-    # Check for material indicators
-    for indicator in material_indicators:
-        if indicator in user_input:
-            return True
-    
-    # Check for structured content patterns
-    lines = user_input.split('\n')
-    structured_lines = 0
-    for line in lines:
-        line = line.strip()
-        if line and (line.startswith('・') or line.startswith('○') or line.startswith('〇') or 
-                    line.startswith('①') or line.startswith('②') or line.startswith('③') or
-                    line.startswith('④') or line.startswith('⑤') or line.startswith('#')):
-            structured_lines += 1
-    
-    # If many lines are structured content, likely new material
-    if structured_lines >= 5:
-        return True
-    
-    return False
+
 
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
