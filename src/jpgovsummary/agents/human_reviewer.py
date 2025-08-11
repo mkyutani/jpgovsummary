@@ -103,7 +103,13 @@ def human_reviewer(state: State) -> State:
 # - Edit the summary above directly, OR
 # - Write improvement instructions below, OR
 # - Both approaches work!
-# Save with Ctrl+S when done.
+# 
+# Note for improvement instructions:
+# - Use ## or lower for section headings (# is system reserved)
+# - Example: ## Content to add, ### Detail items, etc.
+# - Structured instructions enable more accurate improvements
+# 
+# Save with Ctrl+S when done, or Ctrl+Q to cancel.
 """
 
                 # Calculate cursor position to place it at the start of improvement instructions section
@@ -183,30 +189,29 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     # Handle improvement request
     prompt = PromptTemplate(
         input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
-        template="""
-        現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
+        template="""現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
 
-        **改善要求:**
-        {improvement_request}
+# 改善要求
+{improvement_request}
 
-        **現在の要約:**
-        {current_summary}
+# 現在の要約
+{current_summary}
 
-        **概要情報:**
-        {overview}
+# 概要情報
+{overview}
 
-        **元資料の要約:**
-        {source_context}
+# 元資料の要約
+{source_context}
 
-        **改善要件:**
-        - 改善要求に具体的に対応する
-        - {max_chars}文字以下で作成する
-        - 実際に書かれている内容のみを使用する
-        - 推測や創作は行わない
-        - 重要な情報を漏らさない
-        - 読みやすく論理的な構成にする
-        - 会議名や資料名を適切に含める
-        """
+# 改善要件
+- 改善要求に具体的に対応する
+- {max_chars}文字以下で作成する
+- 実際に書かれている内容のみを使用する
+- 推測や創作は行わない
+- 重要な情報を漏らさない
+- 読みやすく論理的な構成にする
+- 会議名や資料名を適切に含める
+"""
     )
     
     try:
@@ -239,29 +244,28 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
     
     prompt = PromptTemplate(
         input_variables=["current_summary", "overview", "source_context", "max_chars"],
-        template="""
-        承認された要約が文字数制限を超えているため、短縮版を作成してください。
-        人間が承認した内容の意図と重要な情報を保持しながら、文字数制限内に収めてください。
+        template="""承認された要約が文字数制限を超えているため、短縮版を作成してください。
+人間が承認した内容の意図と重要な情報を保持しながら、文字数制限内に収めてください。
 
-        **承認された要約:**
-        {current_summary}
+# 承認された要約
+{current_summary}
 
-        **概要情報:**
-        {overview}
+# 概要情報
+{overview}
 
-        **元資料の要約:**
-        {source_context}
+# 元資料の要約
+{source_context}
 
-        **短縮要件:**
-        - {max_chars}文字以下で作成する（厳守）
-        - 承認された要約の主要な内容と意図を保持する
-        - 最も重要な情報を優先的に含める
-        - 実際に書かれている内容のみを使用する
-        - 推測や創作は行わない
-        - 読みやすく論理的な構成にする
-        - 会議名や資料名を適切に含める
-        - 人間の改善意図を可能な限り反映する
-        """
+# 短縮要件
+- {max_chars}文字以下で作成する（厳守）
+- 承認された要約の主要な内容と意図を保持する
+- 最も重要な情報を優先的に含める
+- 実際に書かれている内容のみを使用する
+- 推測や創作は行わない
+- 読みやすく論理的な構成にする
+- 会議名や資料名を適切に含める
+- 人間の改善意図を可能な限り反映する
+"""
     )
     
     try:
