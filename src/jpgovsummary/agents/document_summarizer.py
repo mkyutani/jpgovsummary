@@ -124,15 +124,16 @@ def generate_structure_based_summary(structure_content: str, document_name: str)
     return result.content.strip()
 
 
-def detect_document_type(texts: list[str]) -> tuple[str, dict]:
+def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
     """文書タイプを判定する
     
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
         
     Returns:
-        tuple[str, dict]: (判定結果, 詳細情報)
-            判定結果: "word" | "powerpoint" | "other"
+        tuple[str, str, dict]: (判定結果, 判定理由, 詳細情報)
+            判定結果: "word" | "powerpoint" | "agenda" | "participants" | "other"
+            判定理由: 選択されたカテゴリーの判定理由
             詳細情報: {"scores": {...}, "reasoning": {...}, "conclusion": str}
     """
     llm = Model().llm()
@@ -150,8 +151,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, dict]:
     detection_prompt = PromptTemplate(
         input_variables=["text", "total_pages"],
         template="""### 目的
-        以下のPDFから抽出されたテキストを分析し、元の文書がWord文書かPowerPoint資料のどちらで作成されたかを判定してください。
-        判定は文書の構造パターン、テキストの配置方法、情報の組織化方式に基づいて行ってください。
+        以下のPDFから抽出されたテキストを分析し、元の文書タイプを判定してください。
 
         ### 分析対象
         総ページ数: {total_pages}ページ
@@ -160,42 +160,40 @@ def detect_document_type(texts: list[str]) -> tuple[str, dict]:
         PDFテキスト:
         {text}
 
-        ### 分析の観点
-        以下の文書特徴を重点的に分析してください：
+        ### 判定カテゴリー（5分類）
 
-        **1. 文書構造の分析**
-        - テキストの流れ：連続した文章か、断片的な情報か
-        - ページ構成：統一された書式か、ページごとに独立したレイアウトか
-        - 情報の階層：章節構造（1.1、1.2など）か、タイトル+内容の繰り返しか
+        **1. Word文書 (word)**
+        - 連続した長文や段落構造を持つ実質的な内容
+        - 議事録（発言内容・議論の記録）
+        - 詳細な説明、分析、報告書
+        - ガイドライン、仕様書、制度説明
 
-        **2. テキスト配置パターン**
-        - 文章の長さ：長い段落が主体か、短いフレーズが主体か
-        - 箇条書きの頻度：箇条書き（・、●、-、数字）がどの程度使用されているか
-        - タイトルの扱い：各ページに明確なタイトルがあるか
+        **2. PowerPoint資料 (powerpoint)**
+        - スライド形式の実質的なプレゼンテーション内容
+        - 分析結果、提案、説明資料
+        - 図表と説明の組み合わせ
+        - 概要資料、サマリー資料
 
-        **3. 情報提示方式**
-        - 説明の詳しさ：詳細な説明文か、要点を絞った簡潔な表現か
-        - 図表の扱い：文章に埋め込まれているか、独立して配置されているか
-        - 全体の目的：詳細な報告・説明か、プレゼンテーション・概要説明か
+        **3. 議事次第 (agenda)**
+        - 会議の議事次第、議事日程、アジェンダ
+        - 開催日時、場所、議題リスト
+        - 配付資料一覧、会議進行スケジュール
+        - 「議事次第」「アジェンダ」等のタイトル
 
-        ### 判定カテゴリー
-        1. Word文書 - 連続したテキスト、段落構造、報告書形式
-        2. PowerPoint資料 - スライド形式、箇条書き、タイトル+内容構造
+        **4. 参加者一覧 (participants)**
+        - 委員名簿、参加者リスト
+        - 名前、所属、役職の一覧
+        - 「委員名簿」「参加者一覧」「出席者」等のタイトル
 
-        ### Word文書の特徴
-        - 長い段落が連続している
-        - 章・節・項の階層構造（例：1.1、1.2、2.1など）
-        - 文章が自然に流れる文書形式
-        - 表や図表が文章に埋め込まれている
-        - ページ全体にテキストが配置されている
+        **5. その他 (other)**
+        - 手書き文書のスキャン、複雑なレイアウト
+        - 図表・グラフのみで説明文が少ない
+        - 開催案内、事務連絡、判読困難な文書
 
-        ### PowerPoint資料の特徴
-        - 各ページに明確なタイトルがある
-        - 箇条書き（・、●、-、数字など）が多用されている
-        - 短いフレーズや文が中心
-        - 図表やグラフが独立して配置されている
-        - スライド的な構成（タイトル＋内容の組み合わせ）
-        - 視覚的な強調（太字、色分けなど）が多い
+        ### 重要な区別ポイント
+        - 議事録（実際の発言記録）→ word
+        - 議事次第（スケジュールのみ）→ agenda
+        - 実質的内容の有無が重要な判断基準
 
         ### 判定のポイント
         - 文章の長さ：Word→長い段落、PowerPoint→短いフレーズ
@@ -207,13 +205,16 @@ def detect_document_type(texts: list[str]) -> tuple[str, dict]:
         **スコア分析:**
         Word: [1-5点] - [理由と根拠となるテキスト例]
         PowerPoint: [1-5点] - [理由と根拠となるテキスト例]
+        Agenda: [1-5点] - [理由と根拠となるテキスト例]
+        Participants: [1-5点] - [理由と根拠となるテキスト例]
+        Other: [1-5点] - [理由と根拠となるテキスト例]
 
         **結論:**
-        最も可能性が高いと判断される形式: [Word/PowerPoint]
+        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/other]
 
         ### 出力要件
         - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
-        - テキスト主体／画像主体の両方のスコアが高くならないよう注意してください。
+        - 複数カテゴリーが同じ高スコアにならないよう注意してください。
         - 最後に、最も可能性が高いカテゴリーを1つ明示してください。""",
     )
     
@@ -224,90 +225,10 @@ def detect_document_type(texts: list[str]) -> tuple[str, dict]:
         "pages_count": pages_to_analyze
     })
     
-    # 結果をパース
     result_text = result.content.strip()
+    logger.info(f"Document type detection completed for {pages_to_analyze}/{len(texts)} pages")
     
-    # スコアと理由を抽出
-    scores = {}
-    reasoning = {}
-    conclusion = ""
-    
-    lines = result_text.split('\n')
-    current_section = ""
-    
-    for line in lines:
-        line = line.strip()
-        if "**スコア分析:**" in line:
-            current_section = "scores"
-            continue
-        elif "**結論:**" in line:
-            current_section = "conclusion"
-            continue
-        
-        if current_section == "scores" and ":" in line and " - " in line:
-            # "Word: 3 - 理由" の形式をパース
-            parts = line.split(" - ", 1)
-            if len(parts) == 2:
-                category_score = parts[0].strip()
-                reason = parts[1].strip()
-                
-                # カテゴリー名とスコアを分離
-                if ":" in category_score:
-                    category, score_str = category_score.split(":", 1)
-                    category = category.strip()
-                    score_str = score_str.strip()
-                    
-                    # スコア数値を抽出
-                    import re
-                    score_match = re.search(r'\d+', score_str)
-                    if score_match:
-                        score = int(score_match.group())
-                        scores[category] = score
-                        reasoning[category] = reason
-        
-        elif current_section == "conclusion" and line:
-            if "最も可能性が高い" in line:
-                conclusion = line
-    
-    # 判定結果をマッピング
-    doc_type = "other"  # デフォルト
-    
-    if scores:
-        # 最高スコアのカテゴリーを特定
-        max_score = max(scores.values())
-        max_categories = [cat for cat, score in scores.items() if score == max_score]
-        
-        if max_categories:
-            top_category = max_categories[0]  # 複数ある場合は最初の一つ
-            
-            # カテゴリー名から doc_type を決定
-            if "Word" in top_category:
-                doc_type = "word"
-            elif "PowerPoint" in top_category:
-                doc_type = "powerpoint"
-            elif "Excel" in top_category or "Scan" in top_category:
-                doc_type = "other"
-    
-    # 共通のパース処理を使用
-    return _parse_detection_result(result_text, len(texts), pages_to_analyze)
-
-
-def _parse_detection_result(result_text: str, total_pages: int, analyzed_pages: int = None) -> tuple[str, dict]:
-    """
-    文書タイプ判定結果をパースする共通関数
-    
-    Args:
-        result_text: LLMからの判定結果テキスト
-        total_pages: 総ページ数
-        analyzed_pages: 分析対象ページ数（Noneの場合はtotal_pagesと同じ）
-        
-    Returns:
-        tuple[str, dict]: (判定結果, 詳細情報)
-    """
-    if analyzed_pages is None:
-        analyzed_pages = total_pages
-    
-    # スコアと理由を抽出
+    # 結果をパースする
     scores = {}
     reasoning = {}
     conclusion = ""
@@ -346,39 +267,270 @@ def _parse_detection_result(result_text: str, total_pages: int, analyzed_pages: 
                         reasoning[category] = reason
         
         elif current_section == "conclusion" and line:
-            if "最も可能性が高い" in line or "Word" in line or "PowerPoint" in line:
+            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "other"]):
                 conclusion = line
     
-    # 判定結果をマッピング（Word vs PowerPoint の2択）
+    # 判定結果をマッピング（5カテゴリ）
     doc_type = "other"  # デフォルト
+    doc_reason = ""
+    
+    # カテゴリー名とタイプのマッピング
+    category_mapping = {
+        "word": "Word",
+        "powerpoint": "PowerPoint", 
+        "agenda": "Agenda",
+        "participants": "Participants",
+        "other": "Other"
+    }
     
     if scores:
-        # WordとPowerPointのスコアを比較
-        word_score = scores.get("Word", 0)
-        ppt_score = scores.get("PowerPoint", 0)
+        # 最高スコアのカテゴリーを特定
+        max_score = max(scores.values())
+        max_categories = [cat for cat, score in scores.items() if score == max_score]
         
-        if word_score > ppt_score:
-            doc_type = "word"
-        elif ppt_score > word_score:
-            doc_type = "powerpoint"
-        # 同点の場合は"other"のまま
+        if max_categories:
+            top_category = max_categories[0]  # 複数ある場合は最初の一つ
+            
+            # カテゴリー名から doc_type を決定
+            for doc_type_key, category_name in category_mapping.items():
+                if category_name in top_category:
+                    doc_type = doc_type_key
+                    doc_reason = reasoning.get(category_name, "")
+                    break
     elif conclusion:
         # スコアがない場合は結論テキストから直接判定
-        if "PowerPoint" in conclusion or "スライド" in conclusion:
-            doc_type = "powerpoint"
-        elif "Word" in conclusion:
-            doc_type = "word"
+        conclusion_lower = conclusion.lower()
+        for doc_type_key in category_mapping.keys():
+            if doc_type_key in conclusion_lower:
+                doc_type = doc_type_key
+                doc_reason = "結論から判定"
+                break
     
     # 詳細情報をまとめる
     detail_info = {
         "scores": scores,
         "reasoning": reasoning,
         "conclusion": conclusion,
-        "total_pages": total_pages,
-        "analyzed_pages": analyzed_pages
+        "total_pages": len(texts),
+        "analyzed_pages": pages_to_analyze
     }
     
-    return doc_type, detail_info
+    return doc_type, doc_reason, detail_info
+
+
+def extract_word_title(texts: list[str]) -> str:
+    """Word文書のタイトルを抽出する
+    
+    Args:
+        texts: PDFから抽出されたテキストのリスト
+        
+    Returns:
+        str: 抽出されたタイトル
+    """
+    llm = Model().llm()
+    
+    # 最初の5ページを取得
+    title_pages = min(5, len(texts))
+    merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts[:title_pages])])
+    
+    title_prompt = PromptTemplate(
+        input_variables=["text", "pages"],
+        template="""以下はWord文書の最初の{pages}ページです。文書のタイトルを抽出してください。
+
+{text}
+
+### タイトル抽出基準
+- 表紙や冒頭に記載された文書の主タイトル
+- 副題がある場合は主タイトルのみ
+- 章タイトルではなく文書全体のタイトル
+- 組織名や日付は除外
+
+### 出力形式
+タイトルのみを出力してください（説明や前置きは不要）""",
+    )
+    
+    chain = title_prompt | llm
+    result = chain.invoke({"text": merged_text, "pages": title_pages})
+    extracted_title = result.content.strip()
+    logger.info(f"Extracted Word title: {extracted_title}")
+    return extracted_title
+
+
+def extract_word_table_of_contents(texts: list[str]) -> str:
+    """Word文書の目次を抽出する
+    
+    Args:
+        texts: PDFから抽出されたページ別テキストのリスト
+        
+    Returns:
+        str: 抽出された目次（構造化されたテキスト）
+    """
+    llm = Model().llm()
+    
+    # 最初の10ページから目次を抽出
+    toc_pages = min(10, len(texts))
+    merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts[:toc_pages])])
+    
+    toc_prompt = PromptTemplate(
+        input_variables=["text", "pages"],
+        template="""以下はWord文書の最初の{pages}ページです。目次部分を抽出してください。
+
+{text}
+
+### 目次抽出基準
+- 「目次」「Contents」などの見出しがある部分
+- 章・節・項の構造を持つリスト
+- ページ番号が記載されている項目リスト
+- 文書の構成を示す階層的なリスト
+
+### 抽出対象外
+- 単なる箇条書き
+- 図表リスト
+- 参考文献リスト
+- 配付資料一覧
+
+### 出力形式
+目次が見つかった場合:
+```
+第1章 ○○○
+  1.1 ○○○
+  1.2 ○○○
+第2章 ○○○
+  2.1 ○○○
+```
+
+目次が見つからない場合:
+目次なし
+
+### 出力要件
+- 目次の階層構造を保持
+- ページ番号は除外
+- 簡潔で読みやすい形式""",
+    )
+    
+    chain = toc_prompt | llm
+    result = chain.invoke({"text": merged_text, "pages": toc_pages})
+    
+    extracted_toc = result.content.strip()
+    logger.info(f"Extracted Word table of contents: {len(extracted_toc)} characters")
+    
+    return extracted_toc
+
+
+def create_summary_from_toc(title: str, table_of_contents: str) -> str:
+    """目次から要約を作成する
+    
+    Args:
+        title: 文書のタイトル
+        table_of_contents: 抽出された目次
+        
+    Returns:
+        str: 目次ベースの要約
+    """
+    llm = Model().llm()
+    
+    toc_summary_prompt = PromptTemplate(
+        input_variables=["title", "toc"],
+        template="""以下のWord文書のタイトルと目次から、文書の要約を作成してください。
+
+### 文書タイトル
+{title}
+
+### 目次
+{toc}
+
+### 要約作成の方針
+- 目次の構造から文書の全体像を把握
+- 各章・節の内容を推測して論理的な流れを構築
+- 文書の目的・背景・主要論点・結論を整理
+- 具体的な内容は推測せず、構造に基づいた概要を記述
+
+### 出力形式
+「{title}」について：
+- 文書の目的・位置づけ
+- 主要な検討項目・論点（目次の章構成に基づく）
+- 文書の特徴・性格
+
+### 制約
+- 簡潔で分かりやすく（3-5文程度）
+- 目次にない具体的内容は推測しない
+- 文書の構造と論理的な流れを重視
+- 「検討」「分析」「提案」等の性格を明示""",
+    )
+    
+    chain = toc_summary_prompt | llm
+    result = chain.invoke({
+        "title": title,
+        "toc": table_of_contents
+    })
+    
+    summary = result.content.strip()
+    logger.info(f"Created summary from table of contents: {len(summary)} characters")
+    
+    return summary
+
+
+def agenda_summarize(texts: list[str]) -> str:
+    """議事次第の簡易要約"""
+    llm = Model().llm()
+    
+    # 全文を結合
+    merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
+    
+    agenda_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下は議事次第です。基本情報を簡潔に要約してください。
+
+{text}
+
+### 抽出項目
+- 会議名
+- 開催日時
+- 開催場所
+- 主要議題（最大3項目）
+
+### 出力形式
+「[会議名]」の議事次第（[開催日時]、[場所]）：主要議題は[議題1]、[議題2]等
+
+### 制約
+- 1-2文で簡潔に
+- 日時は「令和○年○月○日」形式で""",
+    )
+    
+    chain = agenda_prompt | llm
+    result = chain.invoke({"text": merged_text})
+    return result.content.strip()
+
+
+def participants_summarize(texts: list[str]) -> str:
+    """参加者一覧の簡易要約"""
+    llm = Model().llm()
+    
+    # 全文を結合
+    merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
+    
+    participants_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下は参加者一覧・委員名簿です。基本情報を簡潔に要約してください。
+
+{text}
+
+### 抽出項目
+- 委員会・会議名
+- 総参加者数
+- 主要メンバー（座長、委員長等の役職者）
+
+### 出力形式
+「[委員会名]」委員名簿：委員[○]名、座長は[氏名]（[所属]）
+
+### 制約
+- 1文で簡潔に
+- 役職者が複数いる場合は代表者のみ""",
+    )
+    
+    chain = participants_prompt | llm
+    result = chain.invoke({"text": merged_text})
+    return result.content.strip()
 
 
 def word_based_summarize(texts: list[str]) -> str:
@@ -392,9 +544,23 @@ def word_based_summarize(texts: list[str]) -> str:
     Returns:
         str: 要約テキスト
     """
-    # TODO: Wordベース文書専用の要約ロジックを実装
-    # 現在は従来ロジックにフォールバック
-    return traditional_summarize(texts)
+    llm = Model().llm()
+    
+    # ステップ1: タイトル抽出
+    title = extract_word_title(texts)
+    
+    # ステップ2: 目次抽出
+    table_of_contents = extract_word_table_of_contents(texts)
+    
+    # ステップ3: 目次から要約を作成
+    if table_of_contents and table_of_contents != "目次なし":
+        summary = create_summary_from_toc(title, table_of_contents)
+    else:
+        # 目次がない場合は従来ロジックを使用
+        logger.info("No table of contents found, using traditional summarization")
+        summary = traditional_summarize(texts)
+    
+    return summary
 
 
 def extract_powerpoint_title(texts: list[str]) -> str:
@@ -780,13 +946,16 @@ def document_summarizer(state: State) -> State:
             )
         else:
             # 文書タイプを判定
-            doc_type, detection_detail = detect_document_type(texts)
+            doc_type, doc_reason, detection_detail = detect_document_type(texts)
             
             # 判定結果のログ出力
             if detection_detail.get("scores"):
                 top_scores = sorted(detection_detail["scores"].items(), key=lambda x: x[1], reverse=True)[:3]
                 score_summary = ", ".join([f"{cat}:{score}" for cat, score in top_scores])
-                logger.info(f"Processing as {doc_type}-based document (scores: {score_summary})")
+                if doc_reason:
+                    logger.info(f"Processing as {doc_type}-based document (scores: {score_summary}) - Reason: {doc_reason}")
+                else:
+                    logger.info(f"Processing as {doc_type}-based document (scores: {score_summary})")
             else:
                 logger.info(f"Processing as {doc_type}-based document")
 
@@ -798,11 +967,15 @@ def document_summarizer(state: State) -> State:
                 powerpoint_result = powerpoint_based_summarize(texts)
                 # powerpointは {title, summary} のdictを返す
                 summary_content = f"「{powerpoint_result.get('title', name)}」について：{powerpoint_result.get('summary', '').strip()}"
+            elif doc_type == "agenda":
+                summary_content = agenda_summarize(texts)
+            elif doc_type == "participants":
+                summary_content = participants_summarize(texts)
             else:
-                # Word/powerpoint以外はスキップ
-                logger.info(f"Skipping non-Word/PowerPoint document: {name}")
+                # その他はスキップ
+                logger.info(f"Skipping document: {name} (type: {doc_type})")
                 message = HumanMessage(
-                    content=f"文書: {name}\nURL: {url}\n\n要約: (Word/powerpoint以外のためスキップ)"
+                    content=f"文書: {name}\nURL: {url}\n\n要約: (処理対象外のためスキップ)"
                 )
                 return {
                     **state,
@@ -831,8 +1004,8 @@ def document_summarizer(state: State) -> State:
                             logger.info(f"Updated report name with title: {title}")
 
             # 既に資料名が含まれているかチェックし、含まれていない場合のみ付加
-            if doc_type == "powerpoint":
-                # powerpointは既に「タイトル」について：形式にしている
+            if doc_type in ["powerpoint", "agenda", "participants"]:
+                # powerpoint, agenda, participantsは既に適切な形式で出力される
                 summary_content_with_name = summary_content
             elif not ("について：" in summary_content or "について:" in summary_content):
                 summary_content_with_name = f"「{name}」について：{summary_content}"
