@@ -360,7 +360,7 @@ def main() -> int:
             "url": args.url,
             "target_reports": TargetReportList(
                 reports=[
-                    Report(url=args.url, name="PDFファイル", reason="直接指定されたPDFファイル")
+                    Report(url=args.url, name="", reason="直接指定されたPDFファイル")
                 ]
             ),
             "target_report_index": 0,
