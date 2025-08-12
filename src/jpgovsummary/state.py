@@ -18,6 +18,8 @@ class Summary(BaseModel):
     url: str = Field(description="The URL of the summarized document")
     name: str = Field(description="The name of the summarized document")
     content: str = Field(description="The summary content of the document")
+    document_type: str | None = Field(description="The detected document type (word/pptx/other)", default=None)
+    detection_detail: dict | None = Field(description="The document type detection details", default=None)
 
 
 class ReportList(BaseModel, Generic[T]):
