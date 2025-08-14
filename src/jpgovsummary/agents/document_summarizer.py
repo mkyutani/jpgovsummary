@@ -470,13 +470,41 @@ def create_summary_from_toc(title: str, table_of_contents: str) -> str:
     return summary
 
 
-def agenda_summarize(texts: list[str]) -> str:
-    """議事次第の簡易要約"""
+def agenda_summarize(texts: list[str]) -> dict:
+    """議事次第の要約処理
+    
+    Args:
+        texts: PDFから抽出されたページ別テキストのリスト
+        
+    Returns:
+        dict: {"title": str, "summary": str}
+    """
     llm = Model().llm()
     
     # 全文を結合
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
     
+    # タイトル抽出
+    title_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下の議事次第から会議名を抽出してください。
+
+{text}
+
+### 抽出基準
+- 文書の主タイトルとなる会議名
+- 回数や日付は除外
+- 組織名は含めても可
+
+### 出力形式
+会議名のみを出力してください（説明や前置きは不要）""",
+    )
+    
+    title_chain = title_prompt | llm
+    title_result = title_chain.invoke({"text": merged_text})
+    title = title_result.content.strip()
+    
+    # 要約作成
     agenda_prompt = PromptTemplate(
         input_variables=["text"],
         template="""以下は議事次第です。基本情報を簡潔に要約してください。
@@ -499,16 +527,46 @@ def agenda_summarize(texts: list[str]) -> str:
     
     chain = agenda_prompt | llm
     result = chain.invoke({"text": merged_text})
-    return result.content.strip()
+    summary = result.content.strip()
+    
+    return {"title": title, "summary": summary}
 
 
-def participants_summarize(texts: list[str]) -> str:
-    """参加者一覧の簡易要約"""
+def participants_summarize(texts: list[str]) -> dict:
+    """参加者一覧の要約処理
+    
+    Args:
+        texts: PDFから抽出されたページ別テキストのリスト
+        
+    Returns:
+        dict: {"title": str, "summary": str}
+    """
     llm = Model().llm()
     
     # 全文を結合
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
     
+    # タイトル抽出
+    title_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下の参加者一覧・委員名簿から委員会・会議名を抽出してください。
+
+{text}
+
+### 抽出基準
+- 委員会・会議の正式名称
+- 回数や日付は除外
+- 組織名は含めても可
+
+### 出力形式
+委員会・会議名のみを出力してください（説明や前置きは不要）""",
+    )
+    
+    title_chain = title_prompt | llm
+    title_result = title_chain.invoke({"text": merged_text})
+    title = title_result.content.strip()
+    
+    # 要約作成
     participants_prompt = PromptTemplate(
         input_variables=["text"],
         template="""以下は参加者一覧・委員名簿です。基本情報を簡潔に要約してください。
@@ -530,10 +588,12 @@ def participants_summarize(texts: list[str]) -> str:
     
     chain = participants_prompt | llm
     result = chain.invoke({"text": merged_text})
-    return result.content.strip()
+    summary = result.content.strip()
+    
+    return {"title": title, "summary": summary}
 
 
-def word_based_summarize(texts: list[str]) -> str:
+def word_based_summarize(texts: list[str]) -> dict:
     """Wordベース文書の要約処理
     
     タイトルと目次から文書の全体構造を把握し、構造ベースの要約を生成
@@ -542,7 +602,7 @@ def word_based_summarize(texts: list[str]) -> str:
         texts: PDFから抽出されたページ別テキストのリスト
         
     Returns:
-        str: 要約テキスト
+        dict: {"title": str, "summary": str}
     """
     llm = Model().llm()
     
@@ -560,7 +620,7 @@ def word_based_summarize(texts: list[str]) -> str:
         logger.info("No table of contents found, using traditional summarization")
         summary = traditional_summarize(texts)
     
-    return summary
+    return {"title": title, "summary": summary}
 
 
 def extract_powerpoint_title(texts: list[str]) -> str:
@@ -960,17 +1020,15 @@ def document_summarizer(state: State) -> State:
                 logger.info(f"Processing as {doc_type}-based document")
 
             # タイプ別要約処理
-            powerpoint_result: dict | None = None
+            result: dict | None = None
             if doc_type == "word":
-                summary_content = word_based_summarize(texts)
+                result = word_based_summarize(texts)
             elif doc_type == "powerpoint":
-                powerpoint_result = powerpoint_based_summarize(texts)
-                # powerpointは {title, summary} のdictを返す
-                summary_content = f"「{powerpoint_result.get('title', name)}」について：{powerpoint_result.get('summary', '').strip()}"
+                result = powerpoint_based_summarize(texts)
             elif doc_type == "agenda":
-                summary_content = agenda_summarize(texts)
+                result = agenda_summarize(texts)
             elif doc_type == "participants":
-                summary_content = participants_summarize(texts)
+                result = participants_summarize(texts)
             else:
                 # その他はスキップ
                 logger.info(f"Skipping document: {name} (type: {doc_type})")
@@ -984,33 +1042,14 @@ def document_summarizer(state: State) -> State:
                     "target_report_index": target_report_index,
                 }
 
-            # 表紙・タイトルページの場合、対象reportのnameをタイトル情報で上書きする
-            if current_index == 0 and name == "PDF":  # 最初の文書のみチェック
-                if doc_type == "powerpoint" and powerpoint_result and powerpoint_result.get("title"):
-                    title = powerpoint_result.get("title", "").strip()
-                    if len(title) > 3:
-                        # target_reportsの現在のレポートのnameを更新
-                        current_report.name = title
-                        logger.info(f"Updated report name with title: {title}")
-            else:
-                    # 「～について：」の資料名部分を抽出（非powerpoint）
-                    import re
-                    match = re.search(r'「([^」]+)」について[：:]', summary_content)
-                    if match:
-                        title = match.group(1).strip()
-                        if len(title) > 3:
-                            # target_reportsの現在のレポートのnameを更新
-                            current_report.name = title
-                            logger.info(f"Updated report name with title: {title}")
+            title = result.get('title', name)
+            summary = result.get('summary', '')
 
-            # 既に資料名が含まれているかチェックし、含まれていない場合のみ付加
-            if doc_type in ["powerpoint", "agenda", "participants"]:
-                # powerpoint, agenda, participantsは既に適切な形式で出力される
-                summary_content_with_name = summary_content
-            elif not ("について：" in summary_content or "について:" in summary_content):
-                summary_content_with_name = f"「{name}」について：{summary_content}"
-            else:
-                summary_content_with_name = summary_content
+            # 最初の文書でタイトルが抽出できた場合、reportのnameを更新
+            if current_index == 0 and not name:
+                if title and len(title) > 3:
+                    current_report.name = title.replace('\n', ' ').strip()
+                    logger.info(f"Updated report name with title: {current_report.name}")
 
             # ステップ2: 要約をJSONに変換するプロンプト
             json_prompt = PromptTemplate(
@@ -1029,7 +1068,7 @@ def document_summarizer(state: State) -> State:
             json_chain = json_prompt | llm
             json_result = json_chain.invoke(
                 {
-                    "content": summary_content_with_name,
+                    "content": summary,
                     "url": url,
                     "name": name,
                     "format_instructions": parser.get_format_instructions(),
