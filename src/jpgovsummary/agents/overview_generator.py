@@ -12,15 +12,23 @@ def overview_generator(state: State) -> dict:
     """
     ## Overview Generator Agent
 
-    Write a summary of the meeting based on the input state.
+    Write a summary of the meeting based on the main content extracted by main_content_extractor.
 
     Args:
-        state (State): The current state containing meeting information
+        state (State): The current state containing meeting information and main_content
 
     Returns:
         dict: A dictionary containing the generated summary message
     """
     logger.info("overview_generator")
+
+    # main_content_extractorの結果を取得
+    if "main_content" not in state:
+        logger.error("main_content not found in state. overview_generator requires main_content_extractor to run first.")
+        return {"overview": "エラー: メインコンテンツが抽出されていません。", "messages": []}
+
+    main_content = state["main_content"]
+    logger.info(f"Processing main_content with length: {len(main_content)}")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
@@ -29,7 +37,7 @@ def overview_generator(state: State) -> dict:
         処理手順や中間結果は出力せず、完成した要約文のみを返してください。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
-        以下の手順でマークダウンを分析し、要約を作成してください。各手順は内部処理として行い、最終的に要約文のみを出力してください。
+        以下の手順でメインコンテンツを分析し、要約を作成してください。各手順は内部処理として行い、最終的に要約文のみを出力してください。
 
         ## 内部処理手順（出力しない）
         ### 手順1: 基本情報の特定
@@ -41,7 +49,7 @@ def overview_generator(state: State) -> dict:
         ### 手順2: 内容の要約
         - メインコンテンツから主要な議論内容・検討事項を抽出
         - 会議の委員提出資料や参考資料の名称、委員による資料提出情報は除外
-        - マークダウンに含まれていない内容は含めない
+        - メインコンテンツに含まれていない内容は含めない
         - 重要なポイントや結論を整理
         
         **除外すべき情報（重要）：**
@@ -75,10 +83,19 @@ def overview_generator(state: State) -> dict:
         ## 期待する出力例
         教育分野の認証基盤の在り方に関する検討会（第3回）では、組織間・外部連携における認証基盤の取りまとめ案について、ユースケース整理や実装パターン、個人情報保護の留意事項などを中心に議論し、スケジュールの明確化や複数自治体での実証などの改善点を確認した。
     """)
+    
+    # メインコンテンツを明示的にLLMに渡す
+    content_message = f"以下のメインコンテンツを分析して要約を作成してください：\n\n{main_content}"
+    
     prompt = ChatPromptTemplate.from_messages(
         [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
     )
     chain = prompt | llm
-    result = chain.invoke(state, Config().get())
+    
+    # メインコンテンツを含むメッセージを作成
+    from langchain_core.messages import HumanMessage
+    messages = [HumanMessage(content=content_message)]
+    
+    result = chain.invoke({"messages": messages}, Config().get())
     logger.info(f"Overview: {result.content.replace('\n', '\\n')}")
     return {"overview": result.content, "messages": [result]}
