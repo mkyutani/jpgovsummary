@@ -17,7 +17,7 @@ def summary_integrator(state: State) -> State:
 
     # URLの長さに基づいて動的に文字数制限を計算
     url_length = len(url)
-    max_chars = max(50, 300 - url_length - 1)  # 最低50文字は確保
+    max_chars = max(50, 500 - url_length - 1)  # 最低50文字は確保
 
     if not target_report_summaries:
         logger.warning("No report summaries found")

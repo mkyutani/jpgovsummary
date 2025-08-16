@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from . import Config, Model, Report, State, TargetReportList, logger
 from .agents import (
     document_summarizer,
-    human_reviewer,
+    summary_finalizer,
     main_content_extractor,
     overview_generator,
     report_enumerator,
@@ -81,111 +81,6 @@ def setup() -> None:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
-
-
-def should_continue_final_summary(state: State) -> str | bool:
-    """
-    final_summary関連の条件分岐
-    """
-    final_summary = state.get("final_summary", "")
-    overview = state.get("overview", "")
-    skip_human_review = state.get("skip_human_review", False)
-    
-    # final_summaryまたはoverviewが存在しない場合は終了
-    if not final_summary and not overview:
-        return END
-    
-    # final_summaryが存在しない場合は終了
-    if not final_summary:
-        return END
-    
-    url = state.get("url", "")
-    total_length = len(f"{final_summary}\n{url}")
-    
-    # 300文字未満の場合はhuman_reviewerへ（スキップフラグがない場合）
-    if total_length < 300:
-        if skip_human_review:
-            return END
-        return "human_reviewer"
-    
-    # 再実行回数をチェック
-    summary_retry_count = state.get("summary_retry_count", 0)
-    max_retries = 3
-    
-    # 再実行上限に達した場合はhuman_reviewerへ（スキップフラグがない場合）
-    if summary_retry_count >= max_retries:
-        logger.warning(
-            "summary_integrator retry limit exceeded: final_summary still exceeds 300 characters"
-        )
-        if skip_human_review:
-            return END
-        return "human_reviewer"
-    
-    # 再実行を実行
-    state["summary_retry_count"] = summary_retry_count + 1
-    
-    logger.warning("Retrying summary_integrator: final_summary exceeds 300 characters")
-    
-    retry_message = HumanMessage(
-        content=f"前回の要約が{len(final_summary)}文字で300文字以上になっています。299文字以下でより簡潔な要約を作成してください。\n\n前回の要約: {final_summary}\n\nURL: {url}"
-    )
-    
-    current_messages = state.get("messages", [])
-    state["messages"] = current_messages + [retry_message]
-    
-    return "summary_integrator"
-
-
-def should_continue_human_review(state: State) -> str | bool:
-    """
-    human_reviewer関連の条件分岐
-    """
-    # レビューが完了している場合は終了
-    review_completed = state.get("review_completed", False)
-    if review_completed:
-        # skip_bluesky_postingフラグがない場合はBluesky投稿へ
-        skip_bluesky_posting = state.get("skip_bluesky_posting", False)
-        if not skip_bluesky_posting:
-            return "bluesky_poster"
-        else:
-            return END
-    
-    # レビューセッションが存在しない場合は終了（エラー状態）
-    if "review_session" not in state:
-        return END
-    
-    return END
-
-
-def should_continue_bluesky_posting(state: State) -> str | bool:
-    """
-    bluesky_poster関連の条件分岐（常に終了）
-    """
-    return END
-
-
-def should_continue_overview_only(state: State) -> str | bool:
-    """
-    overview_generator後の条件分岐
-    overview-onlyモードの場合はhuman_reviewerまたはbluesky_posterへ直接遷移
-    """
-    overview_only = state.get("overview_only", False)
-    skip_human_review = state.get("skip_human_review", False)
-    
-    if overview_only:
-        # overview-onlyの場合は直接human_reviewerへ
-        if skip_human_review:
-            # human_reviewも省略する場合はbluesky_posterへ
-            skip_bluesky_posting = state.get("skip_bluesky_posting", False)
-            if skip_bluesky_posting:
-                return END
-            else:
-                return "bluesky_poster"
-        else:
-            return "human_reviewer"
-    else:
-        # 通常のフローは report_enumerator へ
-        return "report_enumerator"
 
 
 def should_continue_target_reports(state: State) -> str | bool:
@@ -265,7 +160,7 @@ def main() -> int:
     graph.add_node("report_selector", report_selector)
     graph.add_node("document_summarizer", document_summarizer)
     graph.add_node("summary_integrator", summary_integrator)
-    graph.add_node("human_reviewer", human_reviewer)
+    graph.add_node("summary_finalizer", summary_finalizer)
     graph.add_node("bluesky_poster", bluesky_poster)
 
     # Define graph edges based on page type
@@ -290,17 +185,13 @@ def main() -> int:
         graph.add_edge(START, "main_content_extractor")
         graph.add_edge("main_content_extractor", "overview_generator")
         
-        # overview_generatorの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "overview_generator",
-            should_continue_overview_only,
-            {
-                "report_enumerator": "report_enumerator",
-                "human_reviewer": "human_reviewer",
-                "bluesky_poster": "bluesky_poster",
-                END: END,
-            },
-        )
+        # overview_generatorの後の処理（overview-onlyモードで分岐）
+        if args.overview_only:
+            # overview-onlyの場合は直接summary_finalizerへ
+            graph.add_edge("overview_generator", "summary_finalizer")
+        else:
+            # 通常のフローは report_enumerator へ
+            graph.add_edge("overview_generator", "report_enumerator")
         
         graph.add_edge("report_enumerator", "report_selector")
 
@@ -326,33 +217,17 @@ def main() -> int:
             },
         )
 
-        # summary_integratorの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "summary_integrator",
-            should_continue_final_summary,
-            {
-                "summary_integrator": "summary_integrator", 
-                "human_reviewer": "human_reviewer",
-                END: END
-            },
-        )
+        # summary_integratorの後は常にsummary_finalizerへ
+        graph.add_edge("summary_integrator", "summary_finalizer")
         
-        # human_reviewerの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "human_reviewer",
-            should_continue_human_review,
-            {
-                "bluesky_poster": "bluesky_poster",
-                END: END
-            },
-        )
-        
-        # bluesky_posterの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "bluesky_poster",
-            should_continue_bluesky_posting,
-            {END: END},
-        )
+        # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
+        if args.skip_bluesky_posting:
+            # Bluesky投稿をスキップする場合は直接終了
+            graph.add_edge("summary_finalizer", END)
+        else:
+            # Bluesky投稿を実行する場合
+            graph.add_edge("summary_finalizer", "bluesky_poster")
+            graph.add_edge("bluesky_poster", END)
     else:  # pdf
         # PDFファイルの場合は直接document_summarizerで処理
         initial_message = {
@@ -369,47 +244,19 @@ def main() -> int:
             "skip_bluesky_posting": args.skip_bluesky_posting,
         }
 
-        # PDFフロー：START -> document_summarizer -> summary_integrator -> END
+        # PDFフロー：START -> document_summarizer -> summary_integrator -> summary_finalizer -> bluesky_poster -> END
         graph.add_edge(START, "document_summarizer")
-
-        # document_summarizerの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "document_summarizer",
-            should_continue_target_reports,
-            {
-                "document_summarizer": "document_summarizer",
-                "summary_integrator": "summary_integrator",
-                END: END,
-            },
-        )
-
-        # summary_integratorの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "summary_integrator",
-            should_continue_final_summary,
-            {
-                "summary_integrator": "summary_integrator", 
-                "human_reviewer": "human_reviewer",
-                END: END
-            },
-        )
+        graph.add_edge("document_summarizer", "summary_integrator")
+        graph.add_edge("summary_integrator", "summary_finalizer")
         
-        # human_reviewerの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "human_reviewer",
-            should_continue_human_review,
-            {
-                "bluesky_poster": "bluesky_poster",
-                END: END
-            },
-        )
-        
-        # bluesky_posterの後の条件分岐を追加
-        graph.add_conditional_edges(
-            "bluesky_poster",
-            should_continue_bluesky_posting,
-            {END: END},
-        )
+        # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
+        if args.skip_bluesky_posting:
+            # Bluesky投稿をスキップする場合は直接終了
+            graph.add_edge("summary_finalizer", END)
+        else:
+            # Bluesky投稿を実行する場合
+            graph.add_edge("summary_finalizer", "bluesky_poster")
+            graph.add_edge("bluesky_poster", END)
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)

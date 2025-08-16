@@ -6,12 +6,12 @@ from langchain_core.prompts import PromptTemplate
 from .. import Model, State, logger
 
 
-def human_reviewer(state: State) -> State:
+def summary_finalizer(state: State) -> State:
     """
-    Human-in-the-loop reviewer agent for final summary quality assurance.
-    Provides bidirectional Q&A functionality for iterative improvement.
+    Summary finalizer agent for final summary quality assurance and character limit validation.
+    Provides bidirectional Q&A functionality for iterative improvement and automatic shortening.
     """
-    logger.info("human_reviewer")
+    logger.info("summary_finalizer")
 
     llm = Model().llm()
     
@@ -21,6 +21,7 @@ def human_reviewer(state: State) -> State:
     url = state.get("url", "")
     target_report_summaries = state.get("target_report_summaries", [])
     overview_only = state.get("overview_only", False)
+    skip_human_review = state.get("skip_human_review", False)
     
     # Determine what to review based on mode
     if overview_only:
@@ -64,6 +65,12 @@ def human_reviewer(state: State) -> State:
                     "result": shortened_summary
                 })
                 continue
+
+            # skip_human_reviewフラグがある場合は自動承認して終了
+            if skip_human_review:
+                print("🤖 Skipping human review (automated mode)")
+                state["review_approved"] = True
+                break
 
             print("💬 OK to approve, improvement request, or Enter for editor")
             user_input = _enhanced_input("You>")
