@@ -115,9 +115,6 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="RAG-based web browsing agent")
     parser.add_argument("url", nargs="?", type=str, help="URL of the meeting or local file path (PDF/HTML)")
-    parser.add_argument(
-        "--graph", nargs=1, type=str, default=None, help="Output file path for the graph"
-    )
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
     parser.add_argument(
         "--skip-human-review", action="store_true", 
@@ -260,10 +257,6 @@ def main() -> int:
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
-
-    if args.graph:
-        graph.get_graph().draw_png(output_file_path=args.graph[0])
-        return 0
 
     for _event in graph.stream(initial_message, config):
         pass

@@ -2077,17 +2077,6 @@ toml = ["tomli (>=2.0.1)"]
 yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
-name = "pygraphviz"
-version = "1.14"
-description = "Python interface to Graphviz"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "pygraphviz-1.14.tar.gz", hash = "sha256:c10df02377f4e39b00ae17c862f4ee7e5767317f1c6b2dfd04cea6acc7fc2bea"},
-]
-
-[[package]]
 name = "pypdf2"
 version = "3.0.1"
 description = "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
@@ -3047,4 +3036,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "b6669330c6df5b28ff0eefe8f1739a3f5ee42ead798a523559475dae37700b07"
+content-hash = "2812a68719c9cfd3edac291fa533c65d17e0187ca39af0c7173793d69a6f8821"
