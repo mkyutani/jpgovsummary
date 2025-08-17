@@ -218,6 +218,11 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
 - 重要な情報を漏らさない
 - 読みやすく論理的な構成にする
 - 会議名や資料名を適切に含める
+- **以下の情報は要約に含めない：**
+  - 会議の開催日時・日付
+  - 会議の開催場所・会場
+  - 会議の出席者・参加者情報
+  - 具体的な時間・場所の詳細
 """
     )
     
@@ -272,6 +277,11 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
 - 読みやすく論理的な構成にする
 - 会議名や資料名を適切に含める
 - 人間の改善意図を可能な限り反映する
+- **以下の情報は要約に含めない：**
+  - 会議の開催日時・日付
+  - 会議の開催場所・会場
+  - 会議の出席者・参加者情報
+  - 具体的な時間・場所の詳細
 """
     )
     
