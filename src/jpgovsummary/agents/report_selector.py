@@ -101,4 +101,5 @@ def report_selector(state: State) -> State:
         **state,
         "scored_reports": ScoredReportList(reports=reports),
         "target_reports": TargetReportList(reports=target_reports),
+        "target_report_index": 0
     }

@@ -20,8 +20,8 @@ def summary_integrator(state: State) -> State:
     max_chars = max(50, 500 - url_length - 1)  # 最低50文字は確保
 
     if not target_report_summaries:
-        logger.warning("No report summaries found")
-        final_summary = overview if overview else "要約を生成できませんでした。"
+        logger.info("No report summaries found")
+        final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"
         message = HumanMessage(content=f"{final_summary}\n{url}")
         return {**state, "messages": [message], "final_summary": final_summary}
 

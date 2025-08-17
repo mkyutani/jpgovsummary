@@ -973,7 +973,16 @@ def document_summarizer(state: State) -> State:
 
     # 現在のインデックスを取得
     current_index = state.get("target_report_index", 0)
-    target_reports = state.get("target_reports", TargetReportList(reports=[]))
+    # state に target_reports が存在しないか None の場合に備えて正規化
+    target_reports = state.get("target_reports")
+    if not target_reports or (hasattr(target_reports, '__len__') and len(target_reports) == 0):
+        logger.info("Skipping document_summarizer")
+        return {
+            **state,
+            "messages": state.get("messages", []),
+            "target_report_summaries": state.get("target_report_summaries", []),
+            "target_report_index": current_index,
+        }
 
     # 初期値を設定
     summary_obj = None

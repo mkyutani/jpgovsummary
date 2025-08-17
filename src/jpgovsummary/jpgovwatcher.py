@@ -91,7 +91,7 @@ def should_continue_target_reports(state: State) -> str | bool:
     # overviewをfinal_summaryとして使用
     if "target_reports" not in state:
         return "summary_integrator"
-    
+
     # target_report_indexがなければ0で初期化
     if "target_report_index" not in state:
         state["target_report_index"] = 0
