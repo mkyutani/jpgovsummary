@@ -160,7 +160,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         PDFテキスト:
         {text}
 
-        ### 判定カテゴリー（5分類）
+        ### 判定カテゴリー（6分類）
 
         **1. Word文書 (word)**
         - 連続した長文や段落構造を持つ実質的な内容
@@ -185,7 +185,14 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         - 名前、所属、役職の一覧
         - 「委員名簿」「参加者一覧」「出席者」等のタイトル
 
-        **5. その他 (other)**
+        **5. ニュース・お知らせ (news)**
+        - 報道発表、プレスリリース、お知らせ
+        - 日付、部署名、見出し、本文、問い合わせ先の構造
+        - 政策発表、事業案内、取り組み紹介
+        - 「報道発表」「プレスリリース」「お知らせ」等のタイトル
+        - 添付資料一覧、同時発表先の記載
+
+        **6. その他 (other)**
         - 手書き文書のスキャン、複雑なレイアウト
         - 図表・グラフのみで説明文が少ない
         - 開催案内、事務連絡、判読困難な文書
@@ -207,10 +214,11 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         PowerPoint: [1-5点] - [理由と根拠となるテキスト例]
         Agenda: [1-5点] - [理由と根拠となるテキスト例]
         Participants: [1-5点] - [理由と根拠となるテキスト例]
+        News: [1-5点] - [理由と根拠となるテキスト例]
         Other: [1-5点] - [理由と根拠となるテキスト例]
 
         **結論:**
-        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/other]
+        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/news/other]
 
         ### 出力要件
         - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
@@ -267,10 +275,10 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
                         reasoning[category] = reason
         
         elif current_section == "conclusion" and line:
-            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "other"]):
+            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "news", "other"]):
                 conclusion = line
     
-    # 判定結果をマッピング（5カテゴリ）
+    # 判定結果をマッピング（6カテゴリ）
     doc_type = "other"  # デフォルト
     doc_reason = ""
     
@@ -280,6 +288,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         "powerpoint": "PowerPoint", 
         "agenda": "Agenda",
         "participants": "Participants",
+        "news": "News",
         "other": "Other"
     }
     
@@ -526,6 +535,71 @@ def agenda_summarize(texts: list[str]) -> dict:
     )
     
     chain = agenda_prompt | llm
+    result = chain.invoke({"text": merged_text})
+    summary = result.content.strip()
+    
+    return {"title": title, "summary": summary}
+
+
+def news_based_summarize(texts: list[str]) -> dict:
+    """ニュース・お知らせ（プレスリリース）の要約処理
+    
+    Args:
+        texts: PDFから抽出されたページ別テキストのリスト
+        
+    Returns:
+        dict: {"title": str, "summary": str}
+    """
+    llm = Model().llm()
+    
+    # 全文を結合
+    merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
+    
+    # タイトル抽出
+    title_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下のプレスリリース・報道発表・お知らせから主要タイトルを抽出してください。
+
+{text}
+
+### 抽出基準
+- 文書の主タイトル（見出し）
+- 日付や部署名は除外
+- 「報道発表」「お知らせ」等の接頭語は除外
+
+### 出力形式
+タイトルのみを出力してください（説明や前置きは不要）""",
+    )
+    
+    title_chain = title_prompt | llm
+    title_result = title_chain.invoke({"text": merged_text})
+    title = title_result.content.strip()
+    
+    # 要約作成
+    news_prompt = PromptTemplate(
+        input_variables=["text"],
+        template="""以下はプレスリリース・報道発表・お知らせです。重要な情報を簡潔に要約してください。
+
+{text}
+
+### 抽出項目
+- 発表内容・事業名
+- 発表元（部署・組織名）
+- 主要な内容・目的
+- 開始時期・実施予定（該当する場合）
+- 背景・意義（簡潔に）
+
+### 出力形式
+「[タイトル]」：[発表元]が[発表内容]について発表。[主要な内容・目的]を[時期]に実施予定。[背景・意義]
+
+### 制約
+- 2-3文で簡潔に
+- 具体的な事実のみを記載
+- 問い合わせ先や技術的詳細は除外
+- 日付は「令和○年○月○日」形式で""",
+    )
+    
+    chain = news_prompt | llm
     result = chain.invoke({"text": merged_text})
     summary = result.content.strip()
     
@@ -1038,6 +1112,8 @@ def document_summarizer(state: State) -> State:
                 result = agenda_summarize(texts)
             elif doc_type == "participants":
                 result = participants_summarize(texts)
+            elif doc_type == "news":
+                result = news_based_summarize(texts)
             else:
                 # その他はスキップ
                 logger.info(f"Skipping document: {name} (type: {doc_type})")

@@ -46,8 +46,7 @@ def summary_finalizer(state: State) -> State:
             total_chars = len(current_summary) + len(url) + 1
             if total_chars > 300:
                 # Generate shortened version
-                print(f"📏 Summary is {total_chars} chars (exceeds 300 limit).")
-                print("✨ Generating shortened version...")
+                logger.info(f"Summary is {total_chars} chars (exceeds 300 limit), generating shortened version.")
                 shortened_summary = _generate_shortened_summary(
                     llm, current_summary, overview, target_report_summaries, url
                 )
@@ -66,13 +65,12 @@ def summary_finalizer(state: State) -> State:
                 })
                 continue
 
-            # skip_human_reviewフラグがある場合は自動承認して終了
             if skip_human_review:
-                print("🤖 Skipping human review (automated mode)")
+                logger.info("Skipping human review (automated mode)")
                 state["review_approved"] = True
                 break
 
-            print("💬 OK to approve, improvement request, or Enter for editor")
+            print("💬 OK or ^D to approve, improvement request, or Enter for editor")
             user_input = _enhanced_input("You>")
 
             # Check if user wants to approve
@@ -97,7 +95,7 @@ def summary_finalizer(state: State) -> State:
                         "result": new_summary
                     })
                 else:
-                    print("❌ Could not process improvement request.")
+                    logger.error("Could not process improvement request.")
             else:
                 # Empty input - launch fullscreen editor with current summary pre-filled
                 editor_content = f"""# Summary (edit directly if needed)
@@ -131,7 +129,7 @@ def summary_finalizer(state: State) -> State:
                 if improvement_line_index > 0:
                     cursor_position = len('\n'.join(lines_before_improvement[:improvement_line_index])) + 1
 
-                result = _enhanced_input("サマリー編集・改善要求", fullscreen=True, initial_content=editor_content, cursor_position=cursor_position)
+                result = _fullscreen_editor(initial_content=editor_content, cursor_position=cursor_position)
 
                 if result and result.strip():
                     new_summary = _process_editor_result(llm, result, current_summary, overview, target_report_summaries, url)
@@ -148,16 +146,16 @@ def summary_finalizer(state: State) -> State:
                             "result": new_summary
                         })
                     else:
-                        print("❌ Could not process editor input.")
+                        logger.error("Could not process editor input.")
                 else:
-                    print("📝 No changes made.")
+                    logger.info("No changes made.")
                 
         except KeyboardInterrupt:
-            print("\n\n⚠️  Review interrupted. Using current summary.")
+            logger.info("Using current summary by KeyboardInterrupt.")
             state["review_approved"] = False
             break
         except EOFError:
-            print("\n\n⚠️  Input ended. Using current summary.")
+            logger.info("Using current summary because EOF detected.")
             state["review_approved"] = False
             break
     
@@ -165,7 +163,7 @@ def summary_finalizer(state: State) -> State:
     state["review_session"] = review_session
 
     # Display final confirmed summary
-    print("\n✅ Review completed!")
+    logger.info("Review completed!")
     _display_current_summary(current_summary, url=url)
 
     # Update messages with final reviewed summary
@@ -358,23 +356,23 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
     
     if has_direct_edit and has_improvement_request:
         # Both direct edit and improvement request: first apply direct edit, then improvement
-        print(f"Direct edit detected, applying improvements to edited summary")
-        print(f"🔄 {improvement_request}")
-        return _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url)
+        logger.info(f"Direct edit detected, applying improvements to edited summary")
+        logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
+        updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url)
     elif has_direct_edit:
         # Only direct edit
-        print(f"Direct edit detected: using edited summary")
-        return edited_summary
+        logger.info(f"Direct edit detected: using edited summary")
+        updated_summary = edited_summary
     elif has_improvement_request:
         # Only improvement request
-        print(f"🔄 {improvement_request}")
-        return _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url)
+        logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
+        updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url)
     else:
         # No changes made
-        print("No changes detected")
-        return current_summary
+        logger.info("No changes detected")
+        updated_summary = current_summary
 
-
+    return updated_summary.strip().replace('\n', '')
 
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
@@ -383,11 +381,9 @@ def _display_current_summary(final_summary: str, url: str) -> None:
     # 要約 + 改行1文字 + URL = 合計文字数
     total_chars = summary_chars + url_chars + 1
     
-    print(f"📄 Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
-    print("-" * 50)
-    print(final_summary)
-    print("-" * 50)
-    print(f"🔗 URL: {url}")
+    logger.info(f"Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
+    logger.info(f"📄 {final_summary}")
+    logger.info(f"🔗 URL: {url}")
 
 def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -> str:
     """Full-screen editor using prompt_toolkit"""
@@ -544,47 +540,23 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
         result = app.run()
         return result.strip() if result else initial_content
         
-    except ImportError as e:
-        print(f"⚠️ No prompt_toolkit: {e}")
-        return initial_content
     except Exception as e:
-        print(f"⚠️ Exception occurred: {type(e).__name__}")
-        print(f"   Detail: {str(e)}")
+        logger.error(f"Fullscreen editor error: {type(e).__name__}: {str(e)}")
         return initial_content
 
-def _enhanced_input(prompt_text: str, fullscreen: bool = False, initial_content: str = "", cursor_position: int = None) -> str:
+def _enhanced_input(prompt_text: str) -> str:
     """Enhanced input with prompt_toolkit support for Japanese input"""
-    
-    # Full-screen editor mode
-    if fullscreen:
-        return _fullscreen_editor(initial_content, cursor_position)
-    
+
     try:
         from prompt_toolkit import prompt
         from prompt_toolkit.history import InMemoryHistory
         
         # Create history for this session
         history = InMemoryHistory()
-        result = prompt(f"{prompt_text} ", history=history, default=initial_content)
+        result = prompt(f"{prompt_text} ", history=history)
         
         return result.strip()
         
-    except ImportError:
-        # prompt_toolkitが利用できない場合のフォールバック
-        print("⚠️  prompt_toolkit not available. Using standard input.")
-        return _safe_input_fallback(prompt_text, initial_content)
-    except (EOFError, KeyboardInterrupt):
-        # Re-raise these as they should be handled by the main loop
-        raise
-
-def _safe_input_fallback(prompt: str, fallback_content: str = "") -> str:
-    """Fallback input function when prompt_toolkit is not available"""
-    try:
-        return input(prompt).strip()
-    except UnicodeDecodeError as e:
-        print(f"❌ Character encoding error occurred: {e}")
-        print("💡 Input contains unsupported characters.")
-        return fallback_content
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
         raise

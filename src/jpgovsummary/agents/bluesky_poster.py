@@ -33,13 +33,11 @@ def bluesky_poster(state: State) -> State:
         
         # ユーザーに投稿意思を確認
         if _ask_user_for_bluesky_posting(final_summary, url, post_content):
-            print("📤 Posting to Bluesky...")
-            
             # MCPClientを使ってBluesky投稿を実行
             post_result = asyncio.run(_post_to_bluesky_via_mcp(post_content))
             
             if post_result["success"]:
-                print("✅ Successfully posted to Bluesky!")
+                logger.info("Successfully posted to Bluesky.")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_content"] = post_content
                 state["bluesky_post_requested"] = True
@@ -47,17 +45,15 @@ def bluesky_poster(state: State) -> State:
                 if post_result.get("result"):
                     state["bluesky_post_uri"] = str(post_result["result"])
             else:
-                print(f"❌ Failed to post to Bluesky: {post_result['error']}")
+                logger.error(f"Failed to post to Bluesky: {post_result['error']}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_requested"] = True
         else:
-            print("❌ Bluesky posting cancelled by user.")
             state["bluesky_post_completed"] = True
             state["bluesky_post_requested"] = False
             
     except Exception as e:
-        logger.error(f"Error in bluesky_poster: {str(e)}")
-        print(f"❌ Error during Bluesky posting: {str(e)}")
+        logger.error(f"Error in bluesky_poster: {type(e).__name__}: {str(e)}")
         state["bluesky_post_completed"] = True
         
     return state
@@ -124,7 +120,6 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
         if not ssky_user:
             error_msg = "SSKY_USER environment variable not set. Format: 'USER:PASSWORD'"
             logger.error(error_msg)
-            print(f"❌ {error_msg}")
             return {
                 "success": False,
                 "content": content,
@@ -305,27 +300,22 @@ def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> 
     while True:
         try:
             response = _safe_input("Post to Bluesky? (Y/n): ").strip()
-            
-            # デフォルトはYes（Enterのみでも投稿）
-            if response == "" or response.lower() in ['y', 'yes']:
+
+            if response == "" or response.lower()[0] == "y":
                 return True
-            elif response.lower() in ['n', 'no']:
+            elif response.lower()[0] == "n":
                 return False
-            else:
-                print("❌ Please answer Y/y/yes or N/n/no.")
-                
         except (KeyboardInterrupt, EOFError):
             return False
 
 
-def _safe_input(prompt: str, default: str = "") -> str:
+def _safe_input(prompt: str, default: str = "?") -> str:
     """Safely get user input with Unicode error handling"""
     try:
         return input(prompt).strip()
     except UnicodeDecodeError as e:
-        print(f"❌ Character encoding error occurred: {e}")
-        print("💡 Input contains unusable characters.")
+        logger.error(f"Character encoding error occurred: {e}")
         return default
     except (EOFError, KeyboardInterrupt):
-        # Re-raise these as they should be handled by the main loop
+        print("")
         raise 
