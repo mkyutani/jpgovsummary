@@ -134,8 +134,8 @@ class State(TypedDict):
         description="Content posted to Bluesky",
         default=None,
     )
-    bluesky_post_uri: str | None = Field(
-        description="URI of the posted Bluesky content",
+    bluesky_post_response: str | None = Field(
+        description="Response from Bluesky posting (JSON string)",
         default=None,
     )
     overview_only: bool | None = Field(

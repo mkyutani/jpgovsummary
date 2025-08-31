@@ -37,13 +37,21 @@ def bluesky_poster(state: State) -> State:
             post_result = asyncio.run(_post_to_bluesky_via_mcp(post_content))
             
             if post_result["success"]:
-                logger.info("Successfully posted to Bluesky.")
+                # AT URIがあれば抽出してログに含める
+                uri = "None"
+                if post_result.get("result"):
+                    try:
+                        result_data = json.loads(str(post_result["result"]))
+                        if result_data.get("status") == "success" and "data" in result_data:
+                            uri = result_data["data"].get("uri")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                logger.info(f"Successfully posted to Bluesky. {uri}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_content"] = post_content
                 state["bluesky_post_requested"] = True
-                # URIが取得できる場合は保存
                 if post_result.get("result"):
-                    state["bluesky_post_uri"] = str(post_result["result"])
+                    state["bluesky_post_response"] = str(post_result["result"])
             else:
                 logger.error(f"Failed to post to Bluesky: {post_result['error']}")
                 state["bluesky_post_completed"] = True
