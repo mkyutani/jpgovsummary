@@ -83,6 +83,19 @@ def setup() -> None:
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
 
+def should_process_additional_files(state: State) -> str:
+    """
+    overview_generatorの後の条件分岐
+    議事録が検出された場合やoverview-onlyモードの場合は追加ファイル処理をスキップ
+    """
+    # overview-onlyモードまたは議事録検出時は直接summary_finalizerへ
+    if state.get("overview_only", False) or state.get("meeting_minutes_detected", False):
+        return "summary_finalizer"
+    
+    # 通常の場合は report_enumerator へ
+    return "report_enumerator"
+
+
 def should_continue_target_reports(state: State) -> str | bool:
     """
     target_reports関連の条件分岐
@@ -182,13 +195,15 @@ def main() -> int:
         graph.add_edge(START, "main_content_extractor")
         graph.add_edge("main_content_extractor", "overview_generator")
         
-        # overview_generatorの後の処理（overview-onlyモードで分岐）
-        if args.overview_only:
-            # overview-onlyの場合は直接summary_finalizerへ
-            graph.add_edge("overview_generator", "summary_finalizer")
-        else:
-            # 通常のフローは report_enumerator へ
-            graph.add_edge("overview_generator", "report_enumerator")
+        # overview_generatorの後の処理（条件分岐で制御）
+        graph.add_conditional_edges(
+            "overview_generator",
+            should_process_additional_files,
+            {
+                "summary_finalizer": "summary_finalizer",
+                "report_enumerator": "report_enumerator",
+            },
+        )
         
         graph.add_edge("report_enumerator", "report_selector")
 

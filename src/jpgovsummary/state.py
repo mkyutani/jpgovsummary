@@ -142,3 +142,7 @@ class State(TypedDict):
         description="Whether to generate overview only without processing additional documents",
         default=False,
     )
+    meeting_minutes_detected: bool | None = Field(
+        description="Whether meeting minutes were detected in the HTML content",
+        default=False,
+    )

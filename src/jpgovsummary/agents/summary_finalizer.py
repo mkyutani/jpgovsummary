@@ -24,7 +24,13 @@ def summary_finalizer(state: State) -> State:
     skip_human_review = state.get("skip_human_review", False)
     
     # Determine what to review based on mode
-    if overview_only:
+    # overview_onlyまたは議事録検出時はoverviewを使用
+    use_overview_mode = (
+        overview_only or 
+        state.get("meeting_minutes_detected", False)
+    )
+    
+    if use_overview_mode:
         current_summary = overview
     else:
         current_summary = final_summary
@@ -53,7 +59,7 @@ def summary_finalizer(state: State) -> State:
                 
                 # Update the summary
                 current_summary = shortened_summary
-                if overview_only:
+                if use_overview_mode:
                     state["overview"] = current_summary
                 else:
                     state["final_summary"] = current_summary
@@ -84,7 +90,7 @@ def summary_finalizer(state: State) -> State:
                 new_summary = _generate_improved_summary(llm, current_summary, user_input, overview, target_report_summaries, url)
                 if new_summary and new_summary != current_summary:
                     current_summary = new_summary
-                    if overview_only:
+                    if use_overview_mode:
                         state["overview"] = current_summary
                     else:
                         state["final_summary"] = current_summary
@@ -135,7 +141,7 @@ def summary_finalizer(state: State) -> State:
                     new_summary = _process_editor_result(llm, result, current_summary, overview, target_report_summaries, url)
                     if new_summary:
                         current_summary = new_summary
-                        if overview_only:
+                        if use_overview_mode:
                             state["overview"] = current_summary
                         else:
                             state["final_summary"] = current_summary
