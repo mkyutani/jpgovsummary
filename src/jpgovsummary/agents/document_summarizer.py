@@ -849,7 +849,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
     
     # ステップ1: タイトル抽出
     title = extract_powerpoint_title(texts)
-    logger.info(f"Extracted PowerPoint title: {title}")
+    logger.info(f"Extracted PowerPoint title: {title.replace('\n', '\\n')}")
     
     # ステップ2: 10ページずつスライドタイトル抽出・スコアリング
     total_pages = len(texts)
