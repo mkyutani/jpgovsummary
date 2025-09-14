@@ -160,7 +160,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         PDFテキスト:
         {text}
 
-        ### 判定カテゴリー（6分類）
+        ### 判定カテゴリー（7分類）
 
         **1. Word文書 (word)**
         - 連続した長文や段落構造を持つ実質的な内容
@@ -195,24 +195,53 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         - 「報道発表」「プレスリリース」「お知らせ」等のタイトル
         - 添付資料一覧、同時発表先の記載
 
-        **6. その他 (other)**
+        **6. 調査・アンケート結果 (survey)**
+        - アンケート集計結果、調査結果、意識調査報告
+        - 表形式のデータが文書の大部分（70%以上）を占める
+        - 質問項目と回答データの明確な対応関係
+        - 「アンケート結果」「調査結果」「集計結果」「意識調査」「ヒアリングシート」等のタイトル
+        - 数値データ、グラフ、統計情報が主要コンテンツ
+        - 選択肢別回答数、回答率、集計値などの定量的データ
+        - 質問番号（Q1、問1、設問1等）と回答の組み合わせ
+        - 罫線や表組みが多用されている文書構造
+        - データの分析や考察よりも、集計結果の提示が主目的
+
+        **7. その他 (other)**
         - 手書き文書のスキャン、複雑なレイアウト
-        - 図表・グラフのみで説明文が少ない
+        - 図表・グラフのみで説明文が少ない（調査結果以外）
         - 開催案内、事務連絡、判読困難な文書
+        - 上記6分類に明確に該当しない文書
 
         ### 重要な区別ポイント
         - 議事録（実際の発言記録）→ word
         - 議事次第（スケジュールのみ）→ agenda
         - 議事次第+参加者一覧（混合文書）→ agenda（議事次第が主目的）
         - 参加者一覧のみ（名簿が主目的）→ participants
+        - **調査・アンケート結果（質問と回答データ）→ survey**
+        - **単なるデータ表示（参加者一覧など）→ participants**
+        - **実質的な調査結果（質問と回答の対応）→ survey**
         - 実質的内容の有無が重要な判断基準
         - **文書の主要目的を判定基準とし、付随的な情報は無視する**
+        - **表の目的が重要：名簿・リスト vs 調査結果・データ分析**
 
         ### 判定のポイント
         - 文章の長さ：Word→長い段落、PowerPoint→短いフレーズ
         - 構造：Word→章節構造、PowerPoint→スライド構造
         - 箇条書きの使用頻度：PowerPointで頻繁に使用
         - タイトルの扱い：PowerPointでは各ページに明確なタイトル
+        - **表の内容：survey→調査データ・統計、participants→人名・組織のリスト**
+        - **数値の種類：survey→集計値・割合・評価点、others→連絡先・番号**
+        - **文書の目的：survey→調査結果の報告、others→情報の整理・提供**
+        - **質問形式：survey→明確な質問項目と回答、others→項目名とデータ**
+
+        ### 表構造・データ文書の特別な判定基準
+        以下の特徴が多く見られる場合は survey カテゴリーを検討：
+        - 質問番号や設問番号（Q1、問1、設問1、質問1等）
+        - 回答選択肢（はい/いいえ、満足/不満足、1-5段階評価等）
+        - 集計用語（合計、平均、割合、件数、回答者数、パーセント等）
+        - 調査関連用語（回答、回答者、対象者、サンプル、調査期間等）
+        - 表形式の回答データ（数値、割合、グラフ等）
+        - 罫線や表組みが文書の大部分を占める構造
 
         ### 出力形式
         **スコア分析:**
@@ -221,10 +250,11 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         Agenda: [1-5点] - [理由と根拠となるテキスト例]
         Participants: [1-5点] - [理由と根拠となるテキスト例]
         News: [1-5点] - [理由と根拠となるテキスト例]
+        Survey: [1-5点] - [理由と根拠となるテキスト例]
         Other: [1-5点] - [理由と根拠となるテキスト例]
 
         **結論:**
-        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/news/other]
+        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/news/survey/other]
 
         ### 出力要件
         - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
@@ -281,10 +311,10 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
                         reasoning[category] = reason
         
         elif current_section == "conclusion" and line:
-            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "news", "other"]):
+            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "news", "survey", "other"]):
                 conclusion = line
     
-    # 判定結果をマッピング（6カテゴリ）
+    # 判定結果をマッピング（7カテゴリ）
     doc_type = "other"  # デフォルト
     doc_reason = ""
     
@@ -295,6 +325,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         "agenda": "Agenda",
         "participants": "Participants",
         "news": "News",
+        "survey": "Survey",
         "other": "Other"
     }
     
@@ -1120,6 +1151,18 @@ def document_summarizer(state: State) -> State:
                 result = participants_summarize(texts)
             elif doc_type == "news":
                 result = news_based_summarize(texts)
+            elif doc_type == "survey":
+                # 調査・アンケート結果はスキップ
+                logger.info(f"Skipping survey document: {name} (type: {doc_type})")
+                message = HumanMessage(
+                    content=f"文書: {name}\nURL: {url}\n\n要約: (調査・アンケート結果のためスキップ)"
+                )
+                return {
+                    **state,
+                    "messages": [message],
+                    "target_report_summaries": state.get("target_report_summaries", []),
+                    "target_report_index": target_report_index,
+                }
             else:
                 # その他はスキップ
                 logger.info(f"Skipping document: {name} (type: {doc_type})")
