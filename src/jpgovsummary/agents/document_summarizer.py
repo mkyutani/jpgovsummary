@@ -1,7 +1,7 @@
 from langchain.chains.summarize import load_summarize_chain
 from langchain.prompts import PromptTemplate
 from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import JsonOutputParser
 
 from .. import Model, State, Summary, TargetReportList, logger
@@ -243,18 +243,52 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
         - 表形式の回答データ（数値、割合、グラフ等）
         - 罫線や表組みが文書の大部分を占める構造
 
-        ### 出力形式
+        ### 出力形式（必ず以下の形式で出力してください）
         **スコア分析:**
-        Word: [1-5点] - [理由と根拠となるテキスト例]
-        PowerPoint: [1-5点] - [理由と根拠となるテキスト例]
-        Agenda: [1-5点] - [理由と根拠となるテキスト例]
-        Participants: [1-5点] - [理由と根拠となるテキスト例]
-        News: [1-5点] - [理由と根拠となるテキスト例]
-        Survey: [1-5点] - [理由と根拠となるテキスト例]
-        Other: [1-5点] - [理由と根拠となるテキスト例]
+        
+        **Word:**
+        **スコア**: 3
+        **理由**: 文書に含まれる文字情報の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **PowerPoint:**
+        **スコア**: 5
+        **理由**: プレゼンテーション形式の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **Agenda:**
+        **スコア**: 1
+        **理由**: 議題形式の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **Participants:**
+        **スコア**: 2
+        **理由**: 参加者情報の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **News:**
+        **スコア**: 1
+        **理由**: ニュース形式の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **Survey:**
+        **スコア**: 1
+        **理由**: アンケート形式の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
+        
+        **Other:**
+        **スコア**: 2
+        **理由**: その他の形式の特徴を具体的に説明
+        **根拠テキスト例**: 「文書から引用した具体的なテキスト」
 
         **結論:**
-        最も可能性が高いと判断される形式: [word/powerpoint/agenda/participants/news/survey/other]
+        最も可能性が高いと判断される形式: powerpoint
+
+        ### 重要な注意事項
+        - 必ず7つのカテゴリー全てに「**スコア**:」「**理由**:」「**根拠テキスト例**:」を記載してください
+        - スコアは1-5の数字のみを記載してください
+        - 理由は文書の特徴を具体的に説明してください
+        - 根拠テキスト例は文書の内容から実際のテキストを引用してください
 
         ### 出力要件
         - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
@@ -275,10 +309,12 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
     # 結果をパースする
     scores = {}
     reasoning = {}
+    evidence = {}
     conclusion = ""
     
     lines = result_text.split('\n')
     current_section = ""
+    current_category = None
     
     for line in lines:
         line = line.strip()
@@ -289,26 +325,29 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
             current_section = "conclusion"
             continue
         
-        if current_section == "scores" and ":" in line and " - " in line:
-            # "Word: 3 - 理由" の形式をパース
-            parts = line.split(" - ", 1)
-            if len(parts) == 2:
-                category_score = parts[0].strip()
-                reason = parts[1].strip()
-                
-                # カテゴリー名とスコアを分離
-                if ":" in category_score:
-                    category, score_str = category_score.split(":", 1)
-                    category = category.strip()
-                    score_str = score_str.strip()
-                    
-                    # スコア数値を抽出
+        if current_section == "scores":
+            # 新しい形式をパース: **カテゴリー名:**
+            if line.startswith("**") and line.endswith(":**"):
+                current_category = line.replace("**", "").replace(":", "").strip()
+            # **スコア**: 数値
+            elif line.startswith("**スコア**:"):
+                if current_category:
+                    score_str = line.replace("**スコア**:", "").strip()
                     import re
                     score_match = re.search(r'\d+', score_str)
                     if score_match:
                         score = int(score_match.group())
-                        scores[category] = score
-                        reasoning[category] = reason
+                        scores[current_category] = score
+            # **理由**: 説明文
+            elif line.startswith("**理由**:"):
+                if current_category:
+                    reason = line.replace("**理由**:", "").strip()
+                    reasoning[current_category] = reason
+            # **根拠テキスト例**: 引用文
+            elif line.startswith("**根拠テキスト例**:"):
+                if current_category:
+                    evidence_text = line.replace("**根拠テキスト例**:", "").strip()
+                    evidence[current_category] = evidence_text
         
         elif current_section == "conclusion" and line:
             if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "news", "survey", "other"]):
@@ -356,6 +395,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
     detail_info = {
         "scores": scores,
         "reasoning": reasoning,
+        "evidence": evidence,
         "conclusion": conclusion,
         "total_pages": len(texts),
         "analyzed_pages": pages_to_analyze
@@ -1121,9 +1161,19 @@ def document_summarizer(state: State) -> State:
             # 要約内容をログに出力
             logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
             
-            message = HumanMessage(
-                content=f"文書: {name}\nURL: {url}\n\n要約: (PDFを読み込めませんでした)"
-            )
+            message = AIMessage(content=f"""
+## 個別文書要約結果（読み込み失敗）
+
+**処理内容**: PDF文書の個別要約を生成
+**要約タイプ**: individual_document（読み込み失敗）
+**文書名**: {name}
+**文書URL**: {url}
+**エラー理由**: PDFファイルの読み込みに失敗
+**影響**: 該当文書の内容が最終要約に含まれない可能性
+
+**生成された要約**:
+(PDFを読み込めませんでした)
+""")
         else:
             # 文書タイプを判定
             doc_type, doc_reason, detection_detail = detect_document_type(texts)
@@ -1222,10 +1272,21 @@ def document_summarizer(state: State) -> State:
             # 要約内容をログに出力
             logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
 
-            # メッセージも作成
-            message = HumanMessage(
-                content=f"文書: {name}\nURL: {url}\n\n要約:\n{json_result.content}"
-            )
+            # 詳細説明付きメッセージを作成
+            message = AIMessage(content=f"""
+## 個別文書要約結果
+
+**処理内容**: PDF文書の個別要約を生成
+**要約タイプ**: individual_document（個別文書要約）
+**文書名**: {name}
+**文書タイプ**: {doc_type}
+**文書URL**: {url}
+**ページ数**: {len(texts)}ページ
+**選択理由**: 会議で配布された一次資料であり、要約作成にとって重要な参照資料
+
+**生成された要約**:
+{summary_obj.content}
+""")
 
     except Exception as e:
         logger.error(f"Error occurred while summarizing document: {str(e)}")
@@ -1235,18 +1296,30 @@ def document_summarizer(state: State) -> State:
         else:
             summary_obj = Summary(url="", name="", content="")
 
-        message = HumanMessage(
-            content=f"文書: {summary_obj.name}\nURL: {summary_obj.url}\n\n要約: (エラーのため要約できませんでした)"
-        )
+        message = AIMessage(content=f"""
+## 個別文書要約結果（エラー）
+
+**処理内容**: PDF文書の個別要約を生成
+**要約タイプ**: individual_document（処理失敗）
+**文書名**: {summary_obj.name}
+**文書URL**: {summary_obj.url}
+**エラー理由**: 文書処理中にエラーが発生
+**影響**: 該当文書の詳細が最終要約に含まれない可能性
+
+**生成された要約**:
+(エラーのため要約できませんでした)
+""")
 
     # 既存のsummariesを取得し、新しい要約を追加
     current_summaries = state.get("target_report_summaries", [])
     new_summaries = current_summaries + ([summary_obj] if summary_obj else [])
 
     # 新しい状態を返す
+    system_message = HumanMessage(content="PDF文書の内容を読み取り、要約を作成してください。")
+    
     return {
         **state,
-        "messages": [message] if message else [],
+        "messages": [system_message, message] if message else [system_message],
         "target_report_summaries": new_summaries,
         "target_report_index": target_report_index,
     }

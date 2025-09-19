@@ -146,3 +146,7 @@ class State(TypedDict):
         description="Whether meeting minutes were detected in the HTML content",
         default=False,
     )
+    is_meeting_page: bool | None = Field(
+        description="Whether the content is from a meeting page (HTML) or individual document (PDF)",
+        default=False,
+    )

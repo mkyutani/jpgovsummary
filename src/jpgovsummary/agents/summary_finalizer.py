@@ -22,6 +22,10 @@ def summary_finalizer(state: State) -> State:
     target_report_summaries = state.get("target_report_summaries", [])
     overview_only = state.get("overview_only", False)
     skip_human_review = state.get("skip_human_review", False)
+    messages = state.get("messages", [])
+    
+    # 会議ページかどうかを判定：初期値で設定されたフラグを使用（summary_integratorと同じロジック）
+    is_meeting_page = state.get("is_meeting_page", False)  # デフォルトは個別文書として扱う
     
     # Determine what to review based on mode
     # overview_onlyまたは議事録検出時はoverviewを使用
@@ -54,7 +58,7 @@ def summary_finalizer(state: State) -> State:
                 # Generate shortened version
                 logger.info(f"Summary is {total_chars} chars (exceeds 300 limit), generating shortened version.")
                 shortened_summary = _generate_shortened_summary(
-                    llm, current_summary, overview, target_report_summaries, url
+                    llm, current_summary, overview, target_report_summaries, url, is_meeting_page
                 )
                 
                 # Update the summary
@@ -87,7 +91,7 @@ def summary_finalizer(state: State) -> State:
             elif user_input.strip():
                 # Process 1-line improvement request directly
                 print(f"🔄")
-                new_summary = _generate_improved_summary(llm, current_summary, user_input, overview, target_report_summaries, url)
+                new_summary = _generate_improved_summary(llm, current_summary, user_input, overview, target_report_summaries, url, is_meeting_page)
                 if new_summary and new_summary != current_summary:
                     current_summary = new_summary
                     if use_overview_mode:
@@ -138,7 +142,7 @@ def summary_finalizer(state: State) -> State:
                 result = _fullscreen_editor(initial_content=editor_content, cursor_position=cursor_position)
 
                 if result and result.strip():
-                    new_summary = _process_editor_result(llm, result, current_summary, overview, target_report_summaries, url)
+                    new_summary = _process_editor_result(llm, result, current_summary, overview, target_report_summaries, url, is_meeting_page)
                     if new_summary:
                         current_summary = new_summary
                         if use_overview_mode:
@@ -173,18 +177,19 @@ def summary_finalizer(state: State) -> State:
     _display_current_summary(current_summary, url=url)
 
     # Update messages with final reviewed summary
-    message = HumanMessage(content=f"{current_summary}\n{url}")
+    message = AIMessage(content=f"{current_summary}\n{url}")
+    system_message = HumanMessage(content="要約の品質を確認し、必要に応じて改善してください。")
 
     # Add review metadata to state
     state["review_completed"] = True
     state["final_review_summary"] = current_summary
 
-    return {**state, "messages": [message]}
+    return {**state, "messages": [system_message, message]}
 
 
 
 def _generate_improved_summary(llm, current_summary: str, improvement_request: str, 
-                             overview: str, summaries: list, url: str) -> str:
+                             overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
     """Generate an improved summary based on human feedback"""
     
     source_context = ""
@@ -198,36 +203,42 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     max_chars = max(50, 300 - url_length - 1)
     
     # Handle improvement request
+    # 会議 or 文書に応じて表現を変更
+    subject_type = "会議" if is_meeting_page else "文書"
+    subject_expression = "会議では〜が議論された" if is_meeting_page else "文書では〜が記載されている"
+    
     prompt = PromptTemplate(
-        input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars"],
-        template="""現在の要約に対して改善要求がありました。要求に従って要約を改善してください。
+        input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
+        template="""現在の{subject_type}要約に対して改善要求がありました。要求に従って{subject_type}要約を改善してください。
 
 # 改善要求
-{improvement_request}
+{{improvement_request}}
 
-# 現在の要約
-{current_summary}
+# 現在の{subject_type}要約
+{{current_summary}}
 
-# 概要情報
-{overview}
+# {subject_type}概要情報
+{{overview}}
 
-# 元資料の要約
-{source_context}
+# {subject_type}で扱われた内容
+{{source_context}}
 
 # 改善要件
 - 改善要求に具体的に対応する
-- {max_chars}文字以下で作成する
+- {{max_chars}}文字以下で作成する
 - 実際に書かれている内容のみを使用する
 - 推測や創作は行わない
 - 重要な情報を漏らさない
 - 読みやすく論理的な構成にする
-- 会議名や資料名を適切に含める
+- {subject_type}名を適切に含める
+- 「{subject_expression}」の形式で表現する
+- より適切な日本語の文章に推敲する
 - **以下の情報は要約に含めない：**
-  - 会議の開催日時・日付
-  - 会議の開催場所・会場
-  - 会議の出席者・参加者情報
+  - {subject_type}の開催日時・日付
+  - {subject_type}の開催場所・会場
+  - {subject_type}の出席者・参加者情報
   - 具体的な時間・場所の詳細
-"""
+""".format(subject_type=subject_type, subject_expression=subject_expression)
     )
     
     try:
@@ -236,7 +247,9 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
             improvement_request=improvement_request,
             overview=overview,
             source_context=source_context,
-            max_chars=max_chars
+            max_chars=max_chars,
+            subject_type=subject_type,
+            subject_expression=subject_expression
         ))
         improved_summary = response.content.strip()
         
@@ -245,7 +258,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
         logger.error(f"Error in summary improvement: {str(e)}")
         return current_summary
 
-def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str) -> str:
+def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
     """Generate a shortened version of the summary to fit 300 character limit"""
     
     source_context = ""
@@ -258,35 +271,42 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
     url_length = len(url)
     max_chars = max(50, 300 - url_length - 1)
     
+    # 会議 or 文書に応じて表現を変更（短縮プロンプト用）
+    subject_type = "会議" if is_meeting_page else "文書"
+    subject_expression = "会議では〜が議論された" if is_meeting_page else "文書では〜が記載されている"
+    
     prompt = PromptTemplate(
-        input_variables=["current_summary", "overview", "source_context", "max_chars"],
-        template="""承認された要約が文字数制限を超えているため、短縮版を作成してください。
+        input_variables=["current_summary", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
+        template="""承認された{subject_type}要約が文字数制限を超えているため、短縮版を作成してください。
 人間が承認した内容の意図と重要な情報を保持しながら、文字数制限内に収めてください。
 
-# 承認された要約
-{current_summary}
+# 承認された{subject_type}要約
+{{current_summary}}
 
-# 概要情報
-{overview}
+# {subject_type}概要情報
+{{overview}}
 
-# 元資料の要約
-{source_context}
+# {subject_type}で扱われた内容
+{{source_context}}
 
 # 短縮要件
-- {max_chars}文字以下で作成する（厳守）
-- 承認された要約の主要な内容と意図を保持する
+- {{max_chars}}文字以下で作成する（厳守）
+- 承認された{subject_type}要約の主要な内容と意図を保持する
 - 最も重要な情報を優先的に含める
 - 実際に書かれている内容のみを使用する
 - 推測や創作は行わない
 - 読みやすく論理的な構成にする
-- 会議名や資料名を適切に含める
+- {subject_type}名を適切に含める
+- 「{subject_expression}」の形式で表現する
+- 文書名の前に番号（文書1、文書2など）は付けない
 - 人間の改善意図を可能な限り反映する
+- より適切な日本語の文章に推敲する
 - **以下の情報は要約に含めない：**
-  - 会議の開催日時・日付
-  - 会議の開催場所・会場
-  - 会議の出席者・参加者情報
+  - {subject_type}の開催日時・日付
+  - {subject_type}の開催場所・会場
+  - {subject_type}の出席者・参加者情報
   - 具体的な時間・場所の詳細
-"""
+""".format(subject_type=subject_type, subject_expression=subject_expression)
     )
     
     try:
@@ -294,7 +314,9 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
             current_summary=current_summary,
             overview=overview,
             source_context=source_context,
-            max_chars=max_chars
+            max_chars=max_chars,
+            subject_type=subject_type,
+            subject_expression=subject_expression
         ))
         shortened_summary = response.content.strip()
         
@@ -321,7 +343,7 @@ def _is_positive_response(user_input: str) -> bool:
     return normalized_input in positive_keywords
 
 
-def _process_editor_result(llm, editor_result: str, current_summary: str, overview: str, summaries: list, url: str) -> str:
+def _process_editor_result(llm, editor_result: str, current_summary: str, overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
     """エディタ結果を処理して新しいサマリーを生成"""
     
     lines = editor_result.strip().split('\n')
@@ -364,7 +386,7 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
         # Both direct edit and improvement request: first apply direct edit, then improvement
         logger.info(f"Direct edit detected, applying improvements to edited summary")
         logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
-        updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url)
+        updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url, is_meeting_page)
     elif has_direct_edit:
         # Only direct edit
         logger.info(f"Direct edit detected: using edited summary")
@@ -372,7 +394,7 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
     elif has_improvement_request:
         # Only improvement request
         logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
-        updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url)
+        updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url, is_meeting_page)
     else:
         # No changes made
         logger.info("No changes detected")

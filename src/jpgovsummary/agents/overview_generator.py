@@ -4,6 +4,7 @@ from langchain_core.prompts import (
     MessagesPlaceholder,
     SystemMessagePromptTemplate,
 )
+from langchain_core.messages import HumanMessage, AIMessage
 
 from .. import Config, Model, State, logger
 
@@ -57,21 +58,37 @@ def overview_generator(state: State) -> dict:
           4. 他の資料を参照しなくても会議の内容が理解できる十分な情報量がある
         - 単なるタイトルや議題リスト、参加者名簿は除外
 
-        ### 手順1: 基本情報の特定
+        ### 手順1: 基本情報の特定と会議/文書判定
         - ページの名称（会議、報告書、とりまとめ、案内、お知らせ、募集など）
         - 会議の場合は回数（第×回）を特定
         - 主催・事務局の府省庁名や審議会名
         - 上位の委員会、研究会、ワーキンググループ名（該当する場合）
+        
+        **会議か文書かの判定基準：**
+        - 会議として扱う場合：
+          - ページ名に「会議」「検討会」「委員会」「審議会」「協議会」「ワーキンググループ」「研究会」「部会」「分科会」が含まれる
+          - 会議の資料リストや議事録が含まれている
+          - 複数の議題や検討事項が含まれている
+        - 文書として扱う場合：
+          - 「お知らせ」「案内」「募集」「通知」「報告書」「ガイドライン」などの単発文書
+          - 特定の制度や政策の説明文書
+          - 調査結果やデータの公表文書
 
-        ### 手順2: 内容の要約
+        ### 手順2: 内容の要約（判定結果に応じた表現）
         - 議事録と判定された場合：
           - 実際の発言内容や議論の詳細を重視して包括的な要約を作成
           - 委員の具体的な発言や提案を反映
           - 質疑応答の内容や議論の流れを含める
           - 決定事項や今後の方針を明確化
-        - 通常の会議資料の場合：
+          - 「会議では〜が議論された」の形式で表現
+        - 会議として判定された場合：
           - メインコンテンツから主要な議論内容・検討事項を抽出
           - 重要なポイントや結論を整理
+          - 「会議では〜が議論された」「検討会では〜が検討された」の形式で表現
+        - 文書として判定された場合：
+          - メインコンテンツから主要な内容を抽出
+          - 重要なポイントや結論を整理
+          - 「文書では〜が記載されている」「報告書では〜が報告されている」の形式で表現
         - 共通の除外項目：
           - 会議の委員提出資料や参考資料の名称、委員による資料提出情報は除外
           - メインコンテンツに含まれていない内容は含めない
@@ -102,6 +119,7 @@ def overview_generator(state: State) -> dict:
         ## 出力要件（重要）
         - 上記の内部処理を経て、要約文のみを出力
         - 議事録と判定した場合：要約文の最後に「[DETAILED_MINUTES_DETECTED]」を付加
+        - 文書と判定した場合：要約文の最後に「[DOCUMENT_PAGE_DETECTED]」を付加
         - 処理手順、ステップ番号、見出し（###、##など）は一切出力しない
         - 箇条書き（・、-、1.など）は使用しない
         - 「概要」「要約」「ステップ」「チェック」などのラベルは出力しない
@@ -110,8 +128,11 @@ def overview_generator(state: State) -> dict:
 
         ## 期待する出力例
         
-        ### 通常の会議資料の場合：
+        ### 会議の場合：
         教育分野の認証基盤の在り方に関する検討会（第3回）では、組織間・外部連携における認証基盤の取りまとめ案について、ユースケース整理や実装パターン、個人情報保護の留意事項などを中心に議論し、スケジュールの明確化や複数自治体での実証などの改善点を確認した。
+        
+        ### 文書の場合：
+        デジタル社会推進のための新制度に関する報告書では、個人情報保護の強化とデータ活用の促進を両立させる制度設計について記載されており、技術的な安全管理措置と法的な規制枠組みの整備が重要な要素として示されている。[DOCUMENT_PAGE_DETECTED]
         
         ### 議事録の場合：
         教育分野の認証基盤の在り方に関する検討会（第3回）では、組織間・外部連携における認証基盤の取りまとめ案について審議し、田中委員からは実装パターンの具体化と技術仕様の詳細化について質問があり、事務局からはセキュリティ対策の強化と個人情報保護の留意事項について説明があった。佐藤座長からは複数自治体での実証実験の必要性が提案され、次回会議までにスケジュールの明確化と詳細な実装計画の策定を行うことが確認された。[DETAILED_MINUTES_DETECTED]
@@ -126,7 +147,6 @@ def overview_generator(state: State) -> dict:
     chain = prompt | llm
     
     # メインコンテンツを含むメッセージを作成
-    from langchain_core.messages import HumanMessage
     messages = [HumanMessage(content=content_message)]
     
     result = chain.invoke({"messages": messages}, Config().get())
@@ -134,15 +154,51 @@ def overview_generator(state: State) -> dict:
     
     # 議事録検出フラグのチェックと処理
     meeting_minutes_detected = "[DETAILED_MINUTES_DETECTED]" in result.content
+    document_page_detected = "[DOCUMENT_PAGE_DETECTED]" in result.content
+    
+    # フラグを除去してクリーンな要約文にする
+    clean_overview = result.content
     if meeting_minutes_detected:
-        # 識別子を除去してクリーンな要約文にする
-        clean_overview = result.content.replace("[DETAILED_MINUTES_DETECTED]", "").strip()
-        logger.info("Meeting minutes detected via prompt output, setting flag and cleaning overview")
+        clean_overview = clean_overview.replace("[DETAILED_MINUTES_DETECTED]", "").strip()
+        logger.info("Meeting minutes detected")
+    if document_page_detected:
+        clean_overview = clean_overview.replace("[DOCUMENT_PAGE_DETECTED]", "").strip()
+        logger.info("Document page detected")
+    
+    # 会議かどうかを判定
+    # 議事録が検出されている場合は確実に会議
+    # 文書フラグが検出されている場合は文書
+    # どちらも検出されていない場合はデフォルトで会議として扱う
+    if meeting_minutes_detected:
+        is_meeting = True
+    elif document_page_detected:
+        is_meeting = False
     else:
-        clean_overview = result.content
+        # フラグが明確でない場合はデフォルトで会議として扱う
+        is_meeting = True
 
+    # 詳細説明付きメッセージを作成
+    detailed_message = AIMessage(content=f"""
+## 会議概要生成結果
+
+**処理内容**: メインコンテンツから会議の概要要約を生成
+**要約タイプ**: overview（会議全体の概要）
+**議事録検出**: {'有' if meeting_minutes_detected else '無'}
+**文書ページ検出**: {'有' if document_page_detected else '無'}
+**内容種別**: {'会議' if is_meeting else '文書'}
+**入力サイズ**: {len(main_content)}文字
+**出力サイズ**: {len(clean_overview)}文字
+
+**生成された概要**:
+{clean_overview}
+""")
+
+    # システムプロンプトを追加
+    system_message = HumanMessage(content="会議の全体概要を生成してください。")
+    
     return {
         "overview": clean_overview, 
-        "messages": [result],
-        "meeting_minutes_detected": meeting_minutes_detected
+        "messages": [system_message, detailed_message],
+        "meeting_minutes_detected": meeting_minutes_detected,
+        "is_meeting_page": is_meeting
     }

@@ -4,6 +4,7 @@ from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
 )
+from langchain_core.messages import HumanMessage, AIMessage
 
 from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
 
@@ -97,9 +98,21 @@ def report_selector(state: State) -> State:
         target_reports = [r for r in reports if r["score"] == highest_score]
         logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
 
+    # 簡潔な結果メッセージを作成
+    system_message = HumanMessage(content="要約の精度向上のために、どの資料を追加で読むべきかを判断してください。")
+    result_message = AIMessage(content=f"""
+## 文書選択結果
+
+**処理内容**: 候補文書から要約精度向上に必要な文書を選択
+**選択文書数**: {len(target_reports)}件
+**最高スコア**: {highest_score}点
+**選択文書**: {', '.join([r['name'] for r in target_reports])}
+""")
+
     return {
         **state,
         "scored_reports": ScoredReportList(reports=reports),
         "target_reports": TargetReportList(reports=target_reports),
-        "target_report_index": 0
+        "target_report_index": 0,
+        "messages": [system_message, result_message]
     }

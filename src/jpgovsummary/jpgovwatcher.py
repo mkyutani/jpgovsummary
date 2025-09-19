@@ -187,6 +187,7 @@ def main() -> int:
                 "skip_human_review": args.skip_human_review,
                 "skip_bluesky_posting": args.skip_bluesky_posting,
                 "overview_only": args.overview_only,
+                "is_meeting_page": True,  # HTMLページは会議ページとして初期化
             }
         except Exception as e:
             print(f"Error loading HTML content: {e}", file=sys.stderr)
@@ -254,6 +255,7 @@ def main() -> int:
             "overview": "",  # summary_integratorで使用
             "skip_human_review": args.skip_human_review,
             "skip_bluesky_posting": args.skip_bluesky_posting,
+            "is_meeting_page": False,  # PDF単体は会議ページではない
         }
 
         # PDFフロー：START -> document_summarizer -> summary_integrator -> summary_finalizer -> bluesky_poster -> END

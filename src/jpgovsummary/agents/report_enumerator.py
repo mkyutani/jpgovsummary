@@ -5,6 +5,7 @@ from langchain_core.prompts import (
     MessagesPlaceholder,
     SystemMessagePromptTemplate,
 )
+from langchain_core.messages import HumanMessage, AIMessage
 import urllib.parse
 
 from .. import CandidateReportList, Config, Model, State, logger
@@ -127,4 +128,18 @@ def report_enumerator(state: State) -> State:
 
         reports = [report for report in result["reports"] if report["is_document"]]
 
-    return {**state, "candidate_reports": CandidateReportList(reports=reports)}
+    # 簡潔な結果メッセージを作成
+    system_message = HumanMessage(content="文書URLとその名前をマークダウンから抽出し、関連性を判定してください。")
+    result_message = AIMessage(content=f"""
+## 候補文書列挙結果
+
+**処理内容**: マークダウンから候補文書を抽出・判定
+**発見文書数**: {len(reports)}件
+**発見文書**: {', '.join([r['name'] for r in reports[:3]])}{'...' if len(reports) > 3 else ''}
+""")
+
+    return {
+        **state, 
+        "candidate_reports": CandidateReportList(reports=reports),
+        "messages": [system_message, result_message]
+    }
