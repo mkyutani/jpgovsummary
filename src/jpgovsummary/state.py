@@ -113,8 +113,8 @@ class State(TypedDict):
         description="The final summary after human review and improvements",
         default=None,
     )
-    skip_human_review: bool | None = Field(
-        description="Whether to skip the human review step for automated workflows",
+    batch: bool | None = Field(
+        description="Whether to run in batch mode without human interaction",
         default=False,
     )
     # Bluesky posting fields

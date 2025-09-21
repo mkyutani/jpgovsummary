@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from . import Config, Model, Report, State, TargetReportList, logger
+from .logger import set_batch_mode
 from .agents import (
     document_summarizer,
     summary_finalizer,
@@ -130,8 +131,8 @@ def main() -> int:
     parser.add_argument("url", nargs="?", type=str, help="URL of the meeting or local file path (PDF/HTML)")
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
     parser.add_argument(
-        "--skip-human-review", action="store_true", 
-        help="Skip human review step for automated workflows"
+        "--batch", action="store_true", 
+        help="Run in batch mode without human interaction"
     )
     parser.add_argument(
         "--skip-bluesky-posting", action="store_true",
@@ -143,6 +144,9 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    # Set logger mode based on batch option
+    set_batch_mode(args.batch)
 
     if args.url is None:
         print("No meeting URL or file path provided", file=sys.stderr)
@@ -184,7 +188,7 @@ def main() -> int:
                     HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown}"),
                 ],
                 "url": args.url,
-                "skip_human_review": args.skip_human_review,
+                "batch": args.batch,
                 "skip_bluesky_posting": args.skip_bluesky_posting,
                 "overview_only": args.overview_only,
                 "is_meeting_page": True,  # HTMLページは会議ページとして初期化
@@ -253,7 +257,7 @@ def main() -> int:
             ),
             "target_report_index": 0,
             "overview": "",  # summary_integratorで使用
-            "skip_human_review": args.skip_human_review,
+            "batch": args.batch,
             "skip_bluesky_posting": args.skip_bluesky_posting,
             "is_meeting_page": False,  # PDF単体は会議ページではない
         }

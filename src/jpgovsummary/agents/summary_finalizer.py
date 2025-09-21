@@ -21,7 +21,7 @@ def summary_finalizer(state: State) -> State:
     url = state.get("url", "")
     target_report_summaries = state.get("target_report_summaries", [])
     overview_only = state.get("overview_only", False)
-    skip_human_review = state.get("skip_human_review", False)
+    batch = state.get("batch", False)
     messages = state.get("messages", [])
     
     # 会議ページかどうかを判定：初期値で設定されたフラグを使用（summary_integratorと同じロジック）
@@ -75,8 +75,8 @@ def summary_finalizer(state: State) -> State:
                 })
                 continue
 
-            if skip_human_review:
-                logger.info("Skipping human review (automated mode)")
+            if batch:
+                logger.info("Skipping human review (batch mode)")
                 state["review_approved"] = True
                 break
 
