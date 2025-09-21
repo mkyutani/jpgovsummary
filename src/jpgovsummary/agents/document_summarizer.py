@@ -126,23 +126,44 @@ def generate_structure_based_summary(structure_content: str, document_name: str)
     return result.content.strip()
 
 
-def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
+def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
     """文書タイプを判定する
     
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
         
     Returns:
-        tuple[str, str, dict]: (判定結果, 判定理由, 詳細情報)
+        tuple[str, str, str, dict]: (判定結果, 判定理由, 根拠テキスト, 詳細情報)
             判定結果: "word" | "powerpoint" | "agenda" | "participants" | "other"
             判定理由: 選択されたカテゴリーの判定理由
+            根拠テキスト: 判定の根拠となるテキスト
             詳細情報: {"scores": {...}, "reasoning": {...}, "conclusion": str}
     """
+    from langchain.output_parsers import PydanticOutputParser
+    from pydantic import BaseModel, Field
+    
+    class CategoryAnalysis(BaseModel):
+        score: int = Field(description="重要度スコア（1-5点）", ge=1, le=5)
+        reason: str = Field(description="スコアの理由")
+        evidence: str = Field(description="根拠テキスト例")
+    
+    class DocumentTypeAnalysis(BaseModel):
+        word: CategoryAnalysis = Field(description="Word文書の分析")
+        powerpoint: CategoryAnalysis = Field(description="PowerPoint文書の分析")
+        agenda: CategoryAnalysis = Field(description="議事次第の分析")
+        participants: CategoryAnalysis = Field(description="参加者一覧の分析")
+        news: CategoryAnalysis = Field(description="ニュース・お知らせの分析")
+        survey: CategoryAnalysis = Field(description="調査・アンケートの分析")
+        other: CategoryAnalysis = Field(description="その他の分析")
+        conclusion: str = Field(description="最も可能性が高いと判断される形式")
+    
     llm = Model().llm()
+    parser = PydanticOutputParser(pydantic_object=DocumentTypeAnalysis)
     # 最初の数ページを分析用に取得（最大5ページ）
     pages_to_analyze = min(5, len(texts))
     sample_texts = texts[:pages_to_analyze]
-    
+    logger.info(f"先頭{len(sample_texts)}ページを分析して文書タイプを判定します")
+
     # ページ数に応じてサンプルテキストを準備
     if pages_to_analyze == 1:
         merged_text = f"ページ1:\n{sample_texts[0]}"
@@ -151,16 +172,9 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, dict]:
     
     # 文書判定プロンプト
     detection_prompt = PromptTemplate(
-        input_variables=["text", "total_pages"],
+        input_variables=["text", "total_pages", "pages_count", "format_instructions"],
         template="""### 目的
-以下のPDFから抽出されたテキストを分析し、元の文書タイプを判定してください。
-
-### 分析対象
-総ページ数: {total_pages}ページ
-分析対象: 最初の{pages_count}ページ
-
-PDFテキスト:
-{text}
+分析対象のPDFから抽出されたテキストを分析し、判定カテゴリーに沿って元の文書タイプを判定してください。
 
 ### 判定カテゴリー（7分類）
 
@@ -296,67 +310,63 @@ PDFテキスト:
 - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
 - 複数カテゴリーが同じ高スコアにならないよう注意してください。
 - 最後に、最も可能性が高いカテゴリーを1つ明示してください。
+
+### 分析対象
+総ページ数: {total_pages}ページ
+分析対象: 最初の{pages_count}ページ
+
+PDFテキスト:
+{text}
+
+### 出力フォーマット
+以下のJSON形式で出力してください：
+
+{format_instructions}
     """)
     
-    chain = detection_prompt | llm
+    chain = detection_prompt | llm | parser
     result = chain.invoke({
         "text": merged_text, 
         "total_pages": len(texts),
-        "pages_count": pages_to_analyze
+        "pages_count": pages_to_analyze,
+        "format_instructions": parser.get_format_instructions()
     })
     
-    result_text = result.content.strip()
-    logger.info(f"📊 文書タイプ検出完了（{pages_to_analyze}/{len(texts)}ページ）")
+    # Pydanticオブジェクトから情報を抽出
+    scores = {
+        "Word": result.word.score,
+        "PowerPoint": result.powerpoint.score,
+        "Agenda": result.agenda.score,
+        "Participants": result.participants.score,
+        "News": result.news.score,
+        "Survey": result.survey.score,
+        "Other": result.other.score
+    }
     
-    # 結果をパースする
-    scores = {}
-    reasoning = {}
-    evidence = {}
-    conclusion = ""
+    reasoning = {
+        "Word": result.word.reason,
+        "PowerPoint": result.powerpoint.reason,
+        "Agenda": result.agenda.reason,
+        "Participants": result.participants.reason,
+        "News": result.news.reason,
+        "Survey": result.survey.reason,
+        "Other": result.other.reason
+    }
     
-    lines = result_text.split('\n')
-    current_section = ""
-    current_category = None
+    evidence = {
+        "Word": result.word.evidence,
+        "PowerPoint": result.powerpoint.evidence,
+        "Agenda": result.agenda.evidence,
+        "Participants": result.participants.evidence,
+        "News": result.news.evidence,
+        "Survey": result.survey.evidence,
+        "Other": result.other.evidence
+    }
     
-    for line in lines:
-        line = line.strip()
-        if "スコア分析:" in line:
-            current_section = "scores"
-            continue
-        elif "結論:" in line:
-            current_section = "conclusion"
-            continue
-        
-        if current_section == "scores":
-            # 新しい形式をパース: **カテゴリー名:**
-            if line.startswith("**") and line.endswith(":**"):
-                current_category = line.replace("**", "").replace(":", "").strip()
-            # **スコア**: 数値
-            elif line.startswith("**スコア**:"):
-                if current_category:
-                    score_str = line.replace("**スコア**:", "").strip()
-                    import re
-                    score_match = re.search(r'\d+', score_str)
-                    if score_match:
-                        score = int(score_match.group())
-                        scores[current_category] = score
-            # **理由**: 説明文
-            elif line.startswith("**理由**:"):
-                if current_category:
-                    reason = line.replace("**理由**:", "").strip()
-                    reasoning[current_category] = reason
-            # **根拠テキスト例**: 引用文
-            elif line.startswith("**根拠テキスト例**:"):
-                if current_category:
-                    evidence_text = line.replace("**根拠テキスト例**:", "").strip()
-                    evidence[current_category] = evidence_text
-        
-        elif current_section == "conclusion" and line:
-            if "最も可能性が高い" in line or any(cat in line for cat in ["word", "powerpoint", "agenda", "participants", "news", "survey", "other"]):
-                conclusion = line
+    conclusion = result.conclusion
     
     # 判定結果をマッピング（7カテゴリ）
-    doc_type = "other"  # デフォルト
+    doc_type = None
     doc_reason = ""
     
     # カテゴリー名とタイプのマッピング
@@ -382,28 +392,35 @@ PDFテキスト:
             for doc_type_key, category_name in category_mapping.items():
                 if category_name in top_category:
                     doc_type = doc_type_key
-                    doc_reason = reasoning.get(category_name, "")
+                    doc_reason = reasoning.get(category_name, "不明")
+                    selected_evidence = evidence.get(category_name, "不明")
                     break
-    elif conclusion:
-        # スコアがない場合は結論テキストから直接判定
+
+    if doc_type is None:
+        # スコアから文書タイプを得られなかった場合は結論テキストから直接判定
         conclusion_lower = conclusion.lower()
         for doc_type_key in category_mapping.keys():
             if doc_type_key in conclusion_lower:
                 doc_type = doc_type_key
                 doc_reason = "結論から判定"
+                selected_evidence = "なし"
                 break
     
     # 詳細情報をまとめる
     detail_info = {
         "scores": scores,
         "reasoning": reasoning,
-        "evidence": evidence,
         "conclusion": conclusion,
         "total_pages": len(texts),
         "analyzed_pages": pages_to_analyze
     }
-    
-    return doc_type, doc_reason, detail_info
+
+    sorted_detail_info = sorted(detail_info["scores"].items(), key=lambda x: x[1], reverse=True)
+    logger.info(f"文書タイプを推定しました: {', '.join([f'{cat}:{score}' for cat, score in sorted_detail_info])}")
+    logger.info(f"{doc_type}の推定理由: {doc_reason}")
+    logger.info(f"{doc_type}の根拠: {selected_evidence}")
+
+    return doc_type, doc_reason, selected_evidence, detail_info
 
 
 def extract_word_title(texts: list[str]) -> str:
@@ -440,7 +457,7 @@ def extract_word_title(texts: list[str]) -> str:
     chain = title_prompt | llm
     result = chain.invoke({"text": merged_text, "pages": title_pages})
     extracted_title = result.content.strip()
-    logger.info(f"📝 Wordタイトル抽出: {extracted_title}")
+    logger.info(f"Wordタイトル抽出: {extracted_title}")
     return extracted_title
 
 
@@ -821,7 +838,7 @@ def extract_powerpoint_title(texts: list[str]) -> str:
     return extracted_title
 
 
-def extract_titles_and_score(texts: list[str], start_page: int, end_page: int) -> dict:
+def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
     """10ページずつスライドタイトルを抽出し、重要度をスコアリング
     
     Args:
@@ -861,7 +878,7 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int) -
 """
 
     prompt = PromptTemplate(
-        input_variables=["content"],
+        input_variables=["content", "format_instructions"],
         template=f"""以下のPowerPoint資料の各ページからスライドタイトルを抽出し、重要度を5点満点でスコアリングしてください。
 
 内容:
@@ -884,35 +901,29 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int) -
 {{format_instructions}}
         """)
     
-    chain = prompt | llm
+    chain = prompt | llm | parser
     
     # リトライ機能付きでJSONパースを実行
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            if attempt > 0:
+                logger.info(f"再検索({attempt+1}回目)")
             result = chain.invoke({
                 "content": content,
                 "format_instructions": parser.get_format_instructions(),
             })
             
-            parsed_result = parser.parse(result.content)
-            analysis_result = parsed_result.dict()
-            if attempt > 0:
-                logger.info(f"✅ JSON解析成功（{attempt}回目, ページ{start_page+1}-{end_page+1}）")
-            return analysis_result
+            return result
             
         except Exception as e:
-            logger.warning(f"⚠️ JSON解析失敗（{attempt+1}/{max_retries}回目, ページ{start_page+1}-{end_page+1}）: {e}")
             if attempt == max_retries - 1:
-                # 最後の試行でも失敗した場合
-                logger.error(f"❌ 全{max_retries}回の試行が失敗（ページ{start_page+1}-{end_page+1}）")
-                logger.error(f"❌ 最終出力: {result.content}")
-                return {"slides": []}
+                logger.error(f"❌ 適切なフォーマットによる結果を得られませんでした")
+                return SlideAnalysis(slides=[])
             else:
-                logger.info(f"🔄 JSON解析をリトライ中（ページ{start_page+1}-{end_page+1}）...")
-    
+                continue
     # ここには到達しないはずだが、安全のため
-    return {"slides": []}
+    return SlideAnalysis(slides=[])
 
 
 def powerpoint_based_summarize(texts: list[str]) -> dict:
@@ -933,20 +944,21 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
     
     # ステップ1: タイトル抽出
     title = extract_powerpoint_title(texts)
-    logger.info(f"📊 PowerPointタイトル抽出: {title.replace('\n', '\\n')}")
+    logger.info(f"PowerPointのタイトルは「{title.replace('\n', '\\n')}」です")
     
-    # ステップ2: 10ページずつスライドタイトル抽出・スコアリング
+    # ステップ2: 指定ページ数ずつスライドタイトル抽出・スコアリング
+    pages_per_batch = 20  # 一度に処理するページ数
     total_pages = len(texts)
     all_slides = []
-    
-    for start_page in range(0, total_pages, 10):
-        end_page = min(start_page + 9, total_pages - 1)
+
+    for start_page in range(0, total_pages, pages_per_batch):
+        end_page = min(start_page + pages_per_batch - 1, total_pages - 1)
         try:
+            logger.info(f"スライドタイトルからスライドの内容を推定します(ページ{start_page+1}-{end_page+1}/{total_pages})")
             slide_analysis = extract_titles_and_score(texts, start_page, end_page)
-            logger.info(f"📊 スライド分析（ページ{start_page+1}-{end_page+1}/{total_pages}）: {len(slide_analysis['slides'])}枚のスライドを分析")
-            for slide in slide_analysis['slides']:
-                logger.info(f"  ページ{slide['page']}: {slide['title']} （スコア: {slide['score']} - {slide['reason']}）")
-            all_slides.extend(slide_analysis["slides"])
+            for slide in slide_analysis.slides:
+                logger.info(f"  ページ{slide.page}: {slide.title} → スコア: {slide.score} - {slide.reason}")
+            all_slides.extend(slide_analysis.slides)
         except Exception as e:
             logger.warning(f"⚠️ スライド分析に失敗（ページ{start_page+1}-{end_page+1}）: {e}")
     
@@ -958,22 +970,22 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         selected_slide_info = "分析失敗のため全ページ使用"
     else:
         # スコアでソートし、最高スコアのスライドのみを選択
-        sorted_slides = sorted(all_slides, key=lambda x: x["score"], reverse=True)
-        max_score = sorted_slides[0]["score"]
-        top_slides = [slide for slide in sorted_slides if slide["score"] == max_score]
+        sorted_slides = sorted(all_slides, key=lambda x: x.score, reverse=True)
+        max_score = sorted_slides[0].score
+        top_slides = [slide for slide in sorted_slides if slide.score == max_score]
 
-        logger.info(f"🎯 選択されたスライド: {', '.join([str(slide['page']) for slide in top_slides])}")
+        logger.info(f"🎯 選択されたスライド: {', '.join([str(slide.page) for slide in top_slides])}")
 
         # 最高スコアのスライドのテキストを取得
         selected_texts = []
         for slide in top_slides:
-            page_idx = slide["page"] - 1  # 1ベースから0ベースに変換
+            page_idx = slide.page - 1  # 1ベースから0ベースに変換
             if 0 <= page_idx < len(texts):
-                selected_texts.append(f"--- ページ {slide['page']} ({slide['title']}) ---\n{texts[page_idx]}")
+                selected_texts.append(f"--- ページ {slide.page} ({slide.title}) ---\n{texts[page_idx]}")
         
         merged_content = "\n\n".join(selected_texts)
         page_info = f"最高スコア{max_score}点のスライド{len(top_slides)}枚（総{total_pages}ページ中）"
-        selected_slide_info = f"選択されたスライド: " + ", ".join([f"ページ{s['page']}({s['title']})" for s in top_slides])
+        selected_slide_info = f"選択されたスライド: " + ", ".join([f"ページ{s.page}({s.title})" for s in top_slides])
     
     # ステップ4: 要約作成
     powerpoint_summary_prompt = PromptTemplate(
@@ -1140,7 +1152,7 @@ def document_summarizer(state: State) -> State:
     # state に target_reports が存在しないか None の場合に備えて正規化
     target_reports = state.get("target_reports")
     if not target_reports or (hasattr(target_reports, '__len__') and len(target_reports) == 0):
-        logger.info("📝 文書要約をスキップ")
+        logger.info("関連文書がないため文書要約をスキップします")
         return {
             **state,
             "messages": state.get("messages", []),
@@ -1155,7 +1167,6 @@ def document_summarizer(state: State) -> State:
 
     try:
         if current_index >= len(target_reports):
-            logger.info("✅ 全文書の要約が完了しました")
             return state
 
         # 現在の文書のURLを取得
@@ -1163,16 +1174,13 @@ def document_summarizer(state: State) -> State:
         url = current_report.url
         name = current_report.name
 
-        logger.info(f"📄 文書を処理中: {url}")
+        logger.info(f"{name}を要約します")
 
         # PDFを読み込んでテキストを抽出
         texts = load_pdf_as_text(url)
         if not texts:
-            logger.warning(f"⚠️ PDFの読み込みに失敗: {url}")
+            logger.warning(f"⚠️ PDFの読み込みに失敗しました: {url}")
             summary_obj = Summary(url=url, name=name, content="")
-            
-            # 要約内容をログに出力
-            logger.info(f"📝 要約: {summary_obj.content.replace('\n', '\\n')}")
             
             message = AIMessage(content=f"""
 ## 個別文書要約結果（読み込み失敗）
@@ -1188,20 +1196,10 @@ def document_summarizer(state: State) -> State:
 (PDFを読み込めませんでした)
 """)
         else:
+            logger.info(f"{name}をテキスト化しました({len(texts)}ページ)")
             # 文書タイプを判定
-            doc_type, doc_reason, detection_detail = detect_document_type(texts)
+            doc_type, doc_reason, evidence_text, detection_detail = detect_document_type(texts)
             
-            # 判定結果のログ出力
-            if detection_detail.get("scores"):
-                top_scores = sorted(detection_detail["scores"].items(), key=lambda x: x[1], reverse=True)[:3]
-                score_summary = ", ".join([f"{cat}:{score}" for cat, score in top_scores])
-                if doc_reason:
-                    logger.info(f"📝 {doc_type}形式として処理中（スコア: {score_summary}）- 理由: {doc_reason}")
-                else:
-                    logger.info(f"📝 {doc_type}形式として処理中（スコア: {score_summary}）")
-            else:
-                logger.info(f"📝 {doc_type}形式として処理中")
-
             # タイプ別要約処理
             result: dict | None = None
             if doc_type == "word":
@@ -1214,21 +1212,9 @@ def document_summarizer(state: State) -> State:
                 result = participants_summarize(texts)
             elif doc_type == "news":
                 result = news_based_summarize(texts)
-            elif doc_type == "survey":
-                # 調査・アンケート結果はスキップ
-                logger.info(f"⏭️ 調査文書をスキップ: {name}（タイプ: {doc_type}）")
-                message = HumanMessage(
-                    content=f"文書: {name}\nURL: {url}\n\n要約: (調査・アンケート結果のためスキップ)"
-                )
-                return {
-                    **state,
-                    "messages": [message],
-                    "target_report_summaries": state.get("target_report_summaries", []),
-                    "target_report_index": target_report_index,
-                }
             else:
-                # その他はスキップ
-                logger.info(f"⏭️ 文書をスキップ: {name}（タイプ: {doc_type}）")
+                # SurveyとOtherはスキップ
+                logger.info(f"文書をスキップ: {name}（タイプ: {doc_type}）")
                 message = HumanMessage(
                     content=f"文書: {name}\nURL: {url}\n\n要約: (処理対象外のためスキップ)"
                 )
@@ -1241,51 +1227,23 @@ def document_summarizer(state: State) -> State:
 
             title = result.get('title', name)
             summary = result.get('summary', '')
+            # 要約内容をログに出力
+            logger.info(f"この資料の要約: {summary.replace('\n', '\\n').strip()}")
 
             # 最初の文書でタイトルが抽出できた場合、reportのnameを更新
             if current_index == 0 and not name:
                 if title and len(title) > 3:
                     current_report.name = title.replace('\n', ' ').strip()
-                    logger.info(f"📝 資料名をタイトルで更新: {current_report.name}")
+                    logger.info(f"この資料の正式なタイトルは「{current_report.name}」です")
 
-            # ステップ2: 要約をJSONに変換するプロンプト
-            json_prompt = PromptTemplate(
-                input_variables=["content", "url", "name"],
-                template="""以下の要約内容をJSON形式に変換してください。
-
-文書名: {name}
-URL: {url}
-要約: {content}
-
-#### 出力フォーマット
-以下のフォーマットで出力してください：
-
-{format_instructions}""",
+            # 直接Summaryオブジェクトを作成
+            summary_obj = Summary(
+                content=summary,
+                url=url,
+                name=title if title else name,
+                document_type=doc_type,
+                detection_detail=detection_detail
             )
-
-            # JSON形式に変換
-            json_chain = json_prompt | llm
-            json_result = json_chain.invoke(
-                {
-                    "content": summary,
-                    "url": url,
-                    "name": name,
-                    "format_instructions": parser.get_format_instructions(),
-                }
-            )
-
-            # JSONのパースを行う
-            # エラーは外側のtry-exceptでキャッチされる
-            parsed_dict = parser.parse(json_result.content)
-            # 辞書をSummaryオブジェクトに変換
-            summary_obj = Summary(**parsed_dict)
-
-            # 判定結果をsummary_objに追加（カスタム属性として）
-            summary_obj.document_type = doc_type
-            summary_obj.detection_detail = detection_detail
-
-            # 要約内容をログに出力
-            logger.info(f"📝 要約: {summary_obj.content.replace('\n', '\\n')}")
 
             # 詳細説明付きメッセージを作成
             message = AIMessage(content=f"""
@@ -1331,7 +1289,10 @@ URL: {url}
 
     # 新しい状態を返す
     system_message = HumanMessage(content="PDF文書の内容を読み取り、要約を作成してください。")
-    
+
+    logger.info(f"✅ {summary_obj.name}の要約を作成しました")
+    logger.info("")
+
     return {
         **state,
         "messages": [system_message, message] if message else [system_message],

@@ -85,7 +85,7 @@ def report_selector(state: State) -> State:
 
     reports = result["reports"]
     if not reports or len(reports) == 0:
-        logger.info("📄 選択された資料はありません")
+        logger.info("関連資料が選択されませんでした")
         reports = []
         target_reports = []
     else:
@@ -96,7 +96,7 @@ def report_selector(state: State) -> State:
         # 最高評価の資料をtarget_reportsに設定（プロンプトの指示に従う）
         highest_score = reports[0]["score"]
         target_reports = [r for r in reports if r["score"] == highest_score]
-        logger.info(f"🎯 {len(target_reports)}件の資料を選択（スコア: {highest_score}）")
+        logger.info(f"{len(target_reports)}件の資料が最高スコア{highest_score}です")
 
     # 簡潔な結果メッセージを作成
     system_message = HumanMessage(content="要約の精度向上のために、どの資料を追加で読むべきかを判断してください。")
@@ -108,6 +108,9 @@ def report_selector(state: State) -> State:
 **最高スコア**: {highest_score}点
 **選択文書**: {', '.join([r['name'] for r in target_reports])}
 """)
+
+    logger.info(f"✅ {len(target_reports)}件の資料を選択しました: {', '.join([r['name'] for r in target_reports])}")
+    logger.info("")
 
     return {
         **state,

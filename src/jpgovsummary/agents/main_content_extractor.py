@@ -63,6 +63,8 @@ def main_content_extractor(state: State) -> dict:
     )
     chain = prompt | llm
     result = chain.invoke(state, Config().get())
-    logger.info(f"📊 抽出結果: {len(result.content)}文字")
-    logger.info("")  # 空行で区切り
+    logger.info(f"メインコンテンツ: {result.content.replace('\n', '\\n').strip()}")
+    logger.info(f"✅ {len(result.content)}文字のメインコンテンツを抽出しました")
+    logger.info("")
+
     return {"main_content": result.content, "messages": [result]}

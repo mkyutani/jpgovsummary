@@ -109,47 +109,48 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            if attempt > 0:
+                logger.info(f"再検索({attempt+1}回目)")
             result = chain.invoke(
                 {**state, "format_instructions": parser.get_format_instructions()}, Config().get()
             )
-            if attempt > 0:
-                logger.info(f"✅ JSON解析成功（{attempt}回目）")
             break
             
         except Exception as e:
-            logger.warning(f"⚠️ JSON解析失敗（{attempt+1}/{max_retries}回目）: {e}")
             if attempt == max_retries - 1:
-                # 最後の試行でも失敗した場合
-                logger.error(f"❌ 全{max_retries}回の試行が失敗")
-                logger.error(f"❌ 最終エラー: {e}")
-                # フォールバック: 空のレポートリストを返す
+                logger.error(f"❌ 適切なフォーマットによる結果を得られませんでした")
                 result = {"reports": []}
             else:
-                logger.info(f"🔄 JSON解析をリトライ中...")
                 continue
 
     reports = result["reports"]
     if not reports or len(reports) == 0:
-        logger.info("📄 関連資料が見つかりませんでした")
+        logger.warning("⚠️ 関連資料が見つかりませんでした")
         reports = []
     else:
         # Python側でURL正規化を実行（確実な相対パス変換）
         base_url = state.get("url", "")
-        if base_url:
-            for report in reports:
+        document_reports = []
+        
+        # 1回のループで正規化、ログ出力、フィルタリングを実行
+        sorted_reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
+        for report in sorted_reports:
+            # URL正規化
+            if base_url:
                 original_url = report["url"]
                 normalized_url = urllib.parse.urljoin(base_url, original_url)
-                if original_url != normalized_url:
-                    logger.info(f"🔗 URL正規化: {original_url} -> {normalized_url}")
                 report["url"] = normalized_url
-
-        reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
-        for report in reports:
+            
+            # ログ出力
             logger.info(
-                f"{'o' if report['is_document'] else 'x'} {report['name']} {report['url']} {report['reason']}"
+                f"{'o' if report['is_document'] else 'x'} {report['name']} {report['reason']}"
             )
-
-        reports = [report for report in result["reports"] if report["is_document"]]
+            
+            # 文書のみをフィルタリング
+            if report["is_document"]:
+                document_reports.append(report)
+        
+        reports = document_reports
 
     # 簡潔な結果メッセージを作成
     system_message = HumanMessage(content="文書URLとその名前をマークダウンから抽出し、関連性を判定してください。")
@@ -158,8 +159,11 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
 
 **処理内容**: マークダウンから候補文書を抽出・判定
 **発見文書数**: {len(reports)}件
-**発見文書**: {', '.join([r['name'] for r in reports[:3]])}{'...' if len(reports) > 3 else ''}
+**発見文書**: {', '.join([r['name'] for r in reports])}
 """)
+
+    logger.info(f"✅ {len(reports)}件の関連資料を発見しました: {', '.join([r['name'] for r in reports])}")
+    logger.info("")
 
     return {
         **state, 

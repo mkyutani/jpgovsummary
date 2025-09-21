@@ -29,7 +29,7 @@ def overview_generator(state: State) -> dict:
         return {"overview": "エラー: メインコンテンツが抽出されていません。", "messages": []}
 
     main_content = state["main_content"]
-    logger.info(f"📄 メインコンテンツを処理中（{len(main_content)}文字）")
+    logger.info(f"メインコンテンツ({len(main_content)}文字)から要約文を生成します")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
@@ -168,28 +168,29 @@ def overview_generator(state: State) -> dict:
     messages = [HumanMessage(content=content_message)]
     
     result = chain.invoke({"messages": messages}, Config().get())
-    logger.info(f"📄 概要: {result.content.replace('\n', '\\n')}")
     
     # 議事録検出フラグのチェックと処理
     meeting_minutes_detected = "[DETAILED_MINUTES_DETECTED]" in result.content
     document_page_detected = "[DOCUMENT_PAGE_DETECTED]" in result.content
     
-    # フラグを除去してクリーンな要約文にする
-    clean_overview = result.content
+    # 改行をエスケープ
+    overview = result.content.replace("\n", "\\n")
+
+    logger.info(f"概要は「{result.content.replace('\n', '\\n')}」です")
     if meeting_minutes_detected:
-        clean_overview = clean_overview.replace("[DETAILED_MINUTES_DETECTED]", "").strip()
-        logger.info("📋 議事録を検出")
+        logger.info(f"対象は議事録を含んでいます")
     if document_page_detected:
-        clean_overview = clean_overview.replace("[DOCUMENT_PAGE_DETECTED]", "").strip()
-        logger.info("📄 文書ページを検出")
-    
+        logger.info(f"対象は文書ページです")
+
     # 会議かどうかを判定
     # 議事録が検出されている場合は確実に会議
     # 文書フラグが検出されている場合は文書
     # どちらも検出されていない場合はデフォルトで会議として扱う
     if meeting_minutes_detected:
+        overview = overview.replace("[DETAILED_MINUTES_DETECTED]", "").strip()
         is_meeting = True
     elif document_page_detected:
+        overview = overview.replace("[DOCUMENT_PAGE_DETECTED]", "").strip()
         is_meeting = False
     else:
         # フラグが明確でない場合はデフォルトで会議として扱う
@@ -201,22 +202,24 @@ def overview_generator(state: State) -> dict:
 
 **処理内容**: メインコンテンツから会議の概要要約を生成
 **要約タイプ**: overview（会議全体の概要）
-**議事録検出**: {'有' if meeting_minutes_detected else '無'}
-**文書ページ検出**: {'有' if document_page_detected else '無'}
+**議事録を含む**: {'〇' if meeting_minutes_detected else '×'}
+**文書ページである**: {'〇' if document_page_detected else '×'}
 **内容種別**: {'会議' if is_meeting else '文書'}
 **入力サイズ**: {len(main_content)}文字
-**出力サイズ**: {len(clean_overview)}文字
+**出力サイズ**: {len(overview)}文字
 
 **生成された概要**:
-{clean_overview}
+{overview}
 """)
 
     # システムプロンプトを追加
     system_message = HumanMessage(content="会議の全体概要を生成してください。")
-    
-    logger.info("")  # 空行で区切り
+
+    logger.info(f"✅ 概要を作成しました: {overview}")
+    logger.info("")
+
     return {
-        "overview": clean_overview, 
+        "overview": overview, 
         "messages": [system_message, detailed_message],
         "meeting_minutes_detected": meeting_minutes_detected,
         "is_meeting_page": is_meeting
