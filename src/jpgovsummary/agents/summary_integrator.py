@@ -147,35 +147,35 @@ def summary_integrator(state: State) -> State:
         combined_summary_prompt = PromptTemplate(
             input_variables=["summaries", "max_chars", "subject_type", "subject_expression"],
             template="""
-            以下の{subject_type}で扱われた複数の内容をまとめて、{{max_chars}}文字以下の簡潔な{subject_type}要約を作成してください。
+以下の{subject_type}で扱われた複数の内容をまとめて、{{max_chars}}文字以下の簡潔な{subject_type}要約を作成してください。
 
-            **重要な制約：**
-            - 実際に書かれている内容のみを使用してください
-            - 推測や補完、創作は一切行わないでください
-            - 「について：」の後に実質的な内容がない場合は空文字列を返してください
-            - 意味のある内容、検討事項、結論、データがない場合は要約を作成しないでください
+**重要な制約：**
+- 実際に書かれている内容のみを使用してください
+- 推測や補完、創作は一切行わないでください
+- 「について：」の後に実質的な内容がない場合は空文字列を返してください
+- 意味のある内容、検討事項、結論、データがない場合は要約を作成しないでください
 
-            **統合方針：**
-            - 重要な情報を漏らさないようにしながら、重複を避け、論理的な流れを保ってください
-            - {subject_type}名は「について：」の前の部分から取得してください
-            - {subject_type}で扱われた複数の内容を適切にまとめてください
-            - 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
-            - 文書名の前に番号（文書1、文書2など）は付けないでください
+**統合方針：**
+- 重要な情報を漏らさないようにしながら、重複を避け、論理的な流れを保ってください
+- {subject_type}名は「について：」の前の部分から取得してください
+- {subject_type}で扱われた複数の内容を適切にまとめてください
+- 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
+- 文書名の前に番号（文書1、文書2など）は付けないでください
 
-            # {subject_type}で扱われた内容:
-            {{summaries}}
+# {subject_type}で扱われた内容:
+{{summaries}}
 
-            # 出力要件
-            - {{max_chars}}文字以下の{subject_type}要約文
-            - 箇条書きではなく、文章形式で
-            - 実際に書かれている内容のみを含める
-            - {subject_type}名を含める
-            - 専門用語は適切に使用
-            - 内容の重複を避ける
-            - {subject_type}が主語となる表現を使用
-            - 実質的内容がない場合は空文字列を返す
-            - より適切な日本語の文章に推敲する
-            """.format(subject_type=subject_type, subject_expression=subject_expression),
+# 出力要件
+- {{max_chars}}文字以下の{subject_type}要約文
+- 箇条書きではなく、文章形式で
+- 実際に書かれている内容のみを含める
+- {subject_type}名を含める
+- 専門用語は適切に使用
+- 内容の重複を避ける
+- {subject_type}が主語となる表現を使用
+- 実質的内容がない場合は空文字列を返す
+- より適切な日本語の文章に推敲する
+""".format(subject_type=subject_type, subject_expression=subject_expression),
         )
 
         # 会議で扱われた内容を統合
@@ -197,41 +197,41 @@ def summary_integrator(state: State) -> State:
         final_summary_prompt = PromptTemplate(
             input_variables=["combined_summary", "overview", "max_chars", "context_info", "subject_type", "subject_expression"],
             template="""
-            以下の{subject_type}情報をもとに、{{max_chars}}文字以下で最終的な{subject_type}要約を作成してください。
+以下の{subject_type}情報をもとに、{{max_chars}}文字以下で最終的な{subject_type}要約を作成してください。
 
-            **重要な制約：**
-            - 実際に書かれている内容のみを使用してください
-            - 推測や補完、創作は一切行わないでください
-            - {subject_type}の目的や結論を創作しないでください
-            - overviewとcombined_summaryの両方に実質的内容がない場合は空文字列を返してください
+**重要な制約：**
+- 実際に書かれている内容のみを使用してください
+- 推測や補完、創作は一切行わないでください
+- {subject_type}の目的や結論を創作しないでください
+- overviewとcombined_summaryの両方に実質的内容がない場合は空文字列を返してください
 
-            **統合方針：**
-            - overviewに{subject_type}名が含まれている場合は、必ず要約文中に残してください
-            - overviewが提供されていない場合は、{subject_type}情報から{subject_type}名を抽出して使用してください
-            - 「第1回○○{subject_type}」などの正式名称や回数情報を省略しないでください
-            - 重要な情報を漏らさず、重複を避け、論理的な流れを保ってください
-            - 文脈情報を考慮して、より一貫性のある要約を作成してください
-            - 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
-            - 文書名の前に番号（文書1、文書2など）は付けないでください
+**統合方針：**
+- overviewに{subject_type}名が含まれている場合は、必ず要約文中に残してください
+- overviewが提供されていない場合は、{subject_type}情報から{subject_type}名を抽出して使用してください
+- 「第1回○○{subject_type}」などの正式名称や回数情報を省略しないでください
+- 重要な情報を漏らさず、重複を避け、論理的な流れを保ってください
+- 文脈情報を考慮して、より一貫性のある要約を作成してください
+- 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
+- 文書名の前に番号（文書1、文書2など）は付けないでください
 
-            **文脈情報：**
-            {{context_info}}
+**文脈情報：**
+{{context_info}}
 
-            # {subject_type}概要
-            {{overview}}
+# {subject_type}概要
+{{overview}}
 
-            # {subject_type}で扱われた内容
-            {{combined_summary}}
+# {subject_type}で扱われた内容
+{{combined_summary}}
 
-            # 出力要件
-            - {{max_chars}}文字以下の{subject_type}要約文
-            - 箇条書きではなく、文章形式でまとめる
-            - {subject_type}名（回数含む）が含まれていること
-            - 専門用語は適切に使用する
-            - 内容の重複を避ける
-            - {subject_type}が主語となる表現を使用
-            - 実質的内容がない場合は空文字列を返す
-            - より適切な日本語の文章に推敲する
+# 出力要件
+- {{max_chars}}文字以下の{subject_type}要約文
+- 箇条書きではなく、文章形式でまとめる
+- {subject_type}名（回数含む）が含まれていること
+- 専門用語は適切に使用する
+- 内容の重複を避ける
+- {subject_type}が主語となる表現を使用
+- 実質的内容がない場合は空文字列を返す
+- より適切な日本語の文章に推敲する
             """.format(subject_type=subject_type, subject_expression=subject_expression),
         )
 
