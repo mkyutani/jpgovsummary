@@ -11,7 +11,7 @@ def summary_finalizer(state: State) -> State:
     Summary finalizer agent for final summary quality assurance and character limit validation.
     Provides bidirectional Q&A functionality for iterative improvement and automatic shortening.
     """
-    logger.info("summary_finalizer")
+    logger.info("✨ 最終調整...")
 
     llm = Model().llm()
     
@@ -56,7 +56,7 @@ def summary_finalizer(state: State) -> State:
             total_chars = len(current_summary) + len(url) + 1
             if total_chars > 300:
                 # Generate shortened version
-                logger.info(f"Summary is {total_chars} chars (exceeds 300 limit), generating shortened version.")
+                logger.info(f"📊 要約が{total_chars}文字（300文字制限超過）、短縮版を生成中...")
                 shortened_summary = _generate_shortened_summary(
                     llm, current_summary, overview, target_report_summaries, url, is_meeting_page
                 )
@@ -76,11 +76,11 @@ def summary_finalizer(state: State) -> State:
                 continue
 
             if batch:
-                logger.info("Skipping human review (batch mode)")
+                logger.info("🤖 人間レビューをスキップ（バッチモード）")
                 state["review_approved"] = True
                 break
 
-            print("💬 OK or ^D to approve, improvement request, or Enter for editor")
+            print("💬 OK または ^D で承認、改善要求の入力、または Enter でエディター起動")
             user_input = _enhanced_input("You>")
 
             # Check if user wants to approve
@@ -105,7 +105,7 @@ def summary_finalizer(state: State) -> State:
                         "result": new_summary
                     })
                 else:
-                    logger.error("Could not process improvement request.")
+                    logger.error("❌ 改善要求を処理できませんでした")
             else:
                 # Empty input - launch fullscreen editor with current summary pre-filled
                 editor_content = f"""# Summary (edit directly if needed)
@@ -156,16 +156,16 @@ def summary_finalizer(state: State) -> State:
                             "result": new_summary
                         })
                     else:
-                        logger.error("Could not process editor input.")
+                        logger.error("❌ エディター入力を処理できませんでした")
                 else:
-                    logger.info("No changes made.")
+                    logger.info("💬 変更はありませんでした")
                 
         except KeyboardInterrupt:
-            logger.info("Using current summary by KeyboardInterrupt.")
+            logger.info("💬 キーボード中断により現在の要約を使用")
             state["review_approved"] = False
             break
         except EOFError:
-            logger.info("Using current summary because EOF detected.")
+            logger.info("💬 EOF検出により現在の要約を使用")
             state["review_approved"] = False
             break
     
@@ -173,8 +173,9 @@ def summary_finalizer(state: State) -> State:
     state["review_session"] = review_session
 
     # Display final confirmed summary
-    logger.info("Review completed!")
+    logger.info("✅ レビュー完了！")
     _display_current_summary(current_summary, url=url)
+    logger.info("")  # 空行で区切り
 
     # Update messages with final reviewed summary
     message = AIMessage(content=f"{current_summary}\n{url}")
@@ -255,7 +256,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
         
         return improved_summary
     except Exception as e:
-        logger.error(f"Error in summary improvement: {str(e)}")
+        logger.error(f"❌ 要約改善中にエラーが発生: {str(e)}")
         return current_summary
 
 def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
@@ -322,7 +323,7 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
         
         return shortened_summary
     except Exception as e:
-        logger.error(f"Error in summary shortening: {str(e)}")
+        logger.error(f"❌ 要約短縮中にエラーが発生: {str(e)}")
         return current_summary
 
 def _is_positive_response(user_input: str) -> bool:
@@ -384,12 +385,12 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
     
     if has_direct_edit and has_improvement_request:
         # Both direct edit and improvement request: first apply direct edit, then improvement
-        logger.info(f"Direct edit detected, applying improvements to edited summary")
+        logger.info(f"✏️ 直接編集を検出、編集された要約に改善を適用")
         logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
         updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url, is_meeting_page)
     elif has_direct_edit:
         # Only direct edit
-        logger.info(f"Direct edit detected: using edited summary")
+        logger.info(f"✏️ 直接編集を検出: 編集された要約を使用")
         updated_summary = edited_summary
     elif has_improvement_request:
         # Only improvement request
@@ -397,7 +398,7 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
         updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url, is_meeting_page)
     else:
         # No changes made
-        logger.info("No changes detected")
+        logger.info("💬 変更は検出されませんでした")
         updated_summary = current_summary
 
     return updated_summary.strip().replace('\n', '')
@@ -409,7 +410,7 @@ def _display_current_summary(final_summary: str, url: str) -> None:
     # 要約 + 改行1文字 + URL = 合計文字数
     total_chars = summary_chars + url_chars + 1
     
-    logger.info(f"Current Summary (summary: {summary_chars}, URL: {url_chars}, total: {total_chars} chars):")
+    logger.info(f"📋 現在の要約（要約: {summary_chars}文字、URL: {url_chars}文字、合計: {total_chars}文字）:")
     logger.info(f"📄 {final_summary}")
     logger.info(f"🔗 URL: {url}")
 
@@ -569,7 +570,7 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
         return result.strip() if result else initial_content
         
     except Exception as e:
-        logger.error(f"Fullscreen editor error: {type(e).__name__}: {str(e)}")
+        logger.error(f"❌ フルスクリーンエディターエラー: {type(e).__name__}: {str(e)}")
         return initial_content
 
 def _enhanced_input(prompt_text: str) -> str:

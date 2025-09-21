@@ -24,7 +24,7 @@ def report_enumerator(state: State) -> State:
     Returns:
         State: The updated state with extracted document information
     """
-    logger.info("report_enumerator")
+    logger.info("📋 関連資料を列挙...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=CandidateReportList)
@@ -113,24 +113,24 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
                 {**state, "format_instructions": parser.get_format_instructions()}, Config().get()
             )
             if attempt > 0:
-                logger.info(f"Successfully parsed JSON on retry {attempt}")
+                logger.info(f"✅ JSON解析成功（{attempt}回目）")
             break
             
         except Exception as e:
-            logger.warning(f"JSON parse attempt {attempt+1}/{max_retries} failed: {e}")
+            logger.warning(f"⚠️ JSON解析失敗（{attempt+1}/{max_retries}回目）: {e}")
             if attempt == max_retries - 1:
                 # 最後の試行でも失敗した場合
-                logger.error(f"All {max_retries} attempts failed")
-                logger.error(f"Final error: {e}")
+                logger.error(f"❌ 全{max_retries}回の試行が失敗")
+                logger.error(f"❌ 最終エラー: {e}")
                 # フォールバック: 空のレポートリストを返す
                 result = {"reports": []}
             else:
-                logger.info(f"Retrying JSON parsing...")
+                logger.info(f"🔄 JSON解析をリトライ中...")
                 continue
 
     reports = result["reports"]
     if not reports or len(reports) == 0:
-        logger.info("No reports found")
+        logger.info("📄 関連資料が見つかりませんでした")
         reports = []
     else:
         # Python側でURL正規化を実行（確実な相対パス変換）
@@ -140,7 +140,7 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
                 original_url = report["url"]
                 normalized_url = urllib.parse.urljoin(base_url, original_url)
                 if original_url != normalized_url:
-                    logger.info(f"URL normalized: {original_url} -> {normalized_url}")
+                    logger.info(f"🔗 URL正規化: {original_url} -> {normalized_url}")
                 report["url"] = normalized_url
 
         reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)

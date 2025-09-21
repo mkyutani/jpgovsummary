@@ -18,7 +18,7 @@ class Model:
                 cls.model = model_name
             else:
                 cls.model = model
-            logger.info(f"Use model {cls.model}")
+            logger.info(f"🤖 モデル {cls.model} を使用")
 
     def __init__(self, model=None) -> None:
         if Model.model is None:

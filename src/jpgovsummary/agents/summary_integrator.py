@@ -88,7 +88,7 @@ def _format_context_info(context: dict) -> str:
 
 def summary_integrator(state: State) -> State:
     """複数の資料の要約を統合し、最終的な要約を生成するエージェント"""
-    logger.info("summary_integrator")
+    logger.info("🔄 要約を統合...")
 
     llm = Model().llm()
 
@@ -109,7 +109,7 @@ def summary_integrator(state: State) -> State:
     max_chars = max(50, 500 - url_length - 1)  # 最低50文字は確保
 
     if not target_report_summaries:
-        logger.info("No report summaries found")
+        logger.info("📄 レポート要約が見つかりませんでした")
         final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"
         message = HumanMessage(content=f"{final_summary}\n{url}")
         return {**state, "messages": [message], "final_summary": final_summary}
@@ -132,7 +132,7 @@ def summary_integrator(state: State) -> State:
     ]
 
     if not valid_summaries:
-        logger.warning("No valid summaries with substantial content found")
+        logger.warning("⚠️ 有効な要約が見つかりませんでした")
         final_summary = overview if overview else ""
         if not final_summary:
             final_summary = ""
@@ -186,7 +186,7 @@ def summary_integrator(state: State) -> State:
 
         # 統合結果が空または無意味な場合のチェック
         if not combined_summary or len(combined_summary) < 1:
-            logger.warning("Combined summary is empty or too short")
+            logger.warning("⚠️ 統合要約が短すぎるかありません")
             final_summary = overview if overview else ""
             if not final_summary:
                 final_summary = ""
@@ -258,7 +258,7 @@ def summary_integrator(state: State) -> State:
         return {**state, "messages": [system_message, message], "final_summary": final_summary}
 
     except Exception as e:
-        logger.error(f"Error in summary integration: {str(e)}")
+        logger.error(f"❌ 要約統合中にエラーが発生: {str(e)}")
         # エラー時はoverviewをそのまま使用
         final_summary = overview if overview else "要約の統合中にエラーが発生しました。"
         message = HumanMessage(content=f"{final_summary}\n{url}")

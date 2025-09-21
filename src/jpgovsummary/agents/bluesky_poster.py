@@ -16,14 +16,14 @@ def bluesky_poster(state: State) -> State:
     """
     Human reviewerの後にBlueskyへの投稿を確認・実行するエージェント
     """
-    logger.info("bluesky_poster")
+    logger.info("🐦 Blueskyに投稿...")
     
     # 最終要約とURLを取得
     final_summary = state.get("final_review_summary") or state.get("final_summary", "")
     url = state.get("url", "")
     
     if not final_summary:
-        logger.warning("No final summary available for Bluesky posting")
+        logger.warning("⚠️ Bluesky投稿用の最終要約がありません")
         state["bluesky_post_completed"] = True
         return state
     
@@ -46,14 +46,14 @@ def bluesky_poster(state: State) -> State:
                             uri = result_data["data"].get("uri")
                     except (json.JSONDecodeError, KeyError):
                         pass
-                logger.info(f"Successfully posted to Bluesky. {uri}")
+                logger.info(f"✅ Blueskyに投稿完了: {uri}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_content"] = post_content
                 state["bluesky_post_requested"] = True
                 if post_result.get("result"):
                     state["bluesky_post_response"] = str(post_result["result"])
             else:
-                logger.error(f"Failed to post to Bluesky: {post_result['error']}")
+                logger.error(f"❌ Bluesky投稿に失敗: {post_result['error']}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_requested"] = True
         else:
@@ -61,7 +61,7 @@ def bluesky_poster(state: State) -> State:
             state["bluesky_post_requested"] = False
             
     except Exception as e:
-        logger.error(f"Error in bluesky_poster: {type(e).__name__}: {str(e)}")
+        logger.error(f"❌ bluesky_posterエラー: {type(e).__name__}: {str(e)}")
         state["bluesky_post_completed"] = True
         
     return state
@@ -127,7 +127,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
         ssky_user = os.getenv("SSKY_USER")
         if not ssky_user:
             error_msg = "SSKY_USER environment variable not set. Format: 'USER:PASSWORD'"
-            logger.error(error_msg)
+            logger.error(f"❌ {error_msg}")
             return {
                 "success": False,
                 "content": content,
@@ -155,7 +155,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
         try:
             tools = await client.get_tools()
         except Exception as e:
-            logger.error(f"Failed to get MCP tools: {str(e)}")
+            logger.error(f"❌ MCPツール取得に失敗: {str(e)}")
             return {
                 "success": False,
                 "content": content,
@@ -208,7 +208,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                                 break
                 
                 if tool_used:
-                    logger.info(f"Selected tool: {tool_used}")
+                    logger.info(f"🔧 使用ツール: {tool_used}")
                 
                 # 実際のツール結果がある場合はそれを優先、なければエージェントレスポンスを使用
                 result_to_check = actual_tool_result if actual_tool_result is not None else response_content
@@ -244,7 +244,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                     else:
                         # ツールが実行されていて、エラーでない場合は成功とみなす（フォールバック）
                         if actual_tool_result is not None:
-                            logger.info("Tool was executed and no error patterns detected, assuming success")
+                            logger.info("✅ ツール実行成功（エラーパターンなし）")
                             return {
                                 "success": True,
                                 "content": content,
@@ -253,7 +253,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                             }
                         
                         # 曖昧な場合
-                        logger.warning(f"Ambiguous result, cannot determine success/failure: {result_str}")
+                        logger.warning(f"⚠️ 結果が曖昧で成功/失敗を判定できません: {result_str}")
                         return {
                             "success": False,
                             "content": content,
@@ -269,7 +269,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                 }
                     
         except Exception as e:
-            logger.error(f"Failed to execute agent: {str(e)}")
+            logger.error(f"❌ エージェント実行に失敗: {str(e)}")
             return {
                 "success": False,
                 "content": content,
@@ -278,7 +278,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
             }
         
     except Exception as e:
-        logger.error(f"Bluesky posting via MCP failed: {str(e)}", exc_info=True)
+        logger.error(f"❌ MCP経由Bluesky投稿に失敗: {str(e)}", exc_info=True)
         return {
             "success": False,
             "content": content,
@@ -327,7 +327,7 @@ def _safe_input(prompt: str, default: str = "?") -> str:
     try:
         return input(prompt).strip()
     except UnicodeDecodeError as e:
-        logger.error(f"Character encoding error occurred: {e}")
+        logger.error(f"❌ 文字エンコーディングエラーが発生: {e}")
         return default
     except (EOFError, KeyboardInterrupt):
         print("")

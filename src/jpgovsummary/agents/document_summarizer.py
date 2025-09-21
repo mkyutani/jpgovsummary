@@ -306,7 +306,7 @@ PDFテキスト:
     })
     
     result_text = result.content.strip()
-    logger.info(f"Document type detection completed for {pages_to_analyze}/{len(texts)} pages")
+    logger.info(f"📊 文書タイプ検出完了（{pages_to_analyze}/{len(texts)}ページ）")
     
     # 結果をパースする
     scores = {}
@@ -440,7 +440,7 @@ def extract_word_title(texts: list[str]) -> str:
     chain = title_prompt | llm
     result = chain.invoke({"text": merged_text, "pages": title_pages})
     extracted_title = result.content.strip()
-    logger.info(f"Extracted Word title: {extracted_title}")
+    logger.info(f"📝 Wordタイトル抽出: {extracted_title}")
     return extracted_title
 
 
@@ -500,7 +500,7 @@ def extract_word_table_of_contents(texts: list[str]) -> str:
     result = chain.invoke({"text": merged_text, "pages": toc_pages})
     
     extracted_toc = result.content.strip()
-    logger.info(f"Extracted Word table of contents: {len(extracted_toc)} characters")
+    logger.info(f"📋 Word目次抽出: {len(extracted_toc)}文字")
     
     return extracted_toc
 
@@ -553,7 +553,7 @@ def create_summary_from_toc(title: str, table_of_contents: str) -> str:
     })
     
     summary = result.content.strip()
-    logger.info(f"Created summary from table of contents: {len(summary)} characters")
+    logger.info(f"📄 目次から要約生成: {len(summary)}文字")
     
     return summary
 
@@ -770,7 +770,7 @@ def word_based_summarize(texts: list[str]) -> dict:
         summary = create_summary_from_toc(title, table_of_contents)
     else:
         # 目次がない場合は従来ロジックを使用
-        logger.info("No table of contents found, using traditional summarization")
+        logger.info("📄 目次が見つからないため、従来の要約方式を使用")
         summary = traditional_summarize(texts)
     
     return {"title": title, "summary": summary}
@@ -898,18 +898,18 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int) -
             parsed_result = parser.parse(result.content)
             analysis_result = parsed_result.dict()
             if attempt > 0:
-                logger.info(f"Successfully parsed JSON on retry {attempt} for pages {start_page+1}-{end_page+1}")
+                logger.info(f"✅ JSON解析成功（{attempt}回目, ページ{start_page+1}-{end_page+1}）")
             return analysis_result
             
         except Exception as e:
-            logger.warning(f"JSON parse attempt {attempt+1}/{max_retries} failed for pages {start_page+1}-{end_page+1}: {e}")
+            logger.warning(f"⚠️ JSON解析失敗（{attempt+1}/{max_retries}回目, ページ{start_page+1}-{end_page+1}）: {e}")
             if attempt == max_retries - 1:
                 # 最後の試行でも失敗した場合
-                logger.error(f"All {max_retries} attempts failed for pages {start_page+1}-{end_page+1}")
-                logger.error(f"Final raw output: {result.content}")
+                logger.error(f"❌ 全{max_retries}回の試行が失敗（ページ{start_page+1}-{end_page+1}）")
+                logger.error(f"❌ 最終出力: {result.content}")
                 return {"slides": []}
             else:
-                logger.info(f"Retrying JSON parsing for pages {start_page+1}-{end_page+1}...")
+                logger.info(f"🔄 JSON解析をリトライ中（ページ{start_page+1}-{end_page+1}）...")
     
     # ここには到達しないはずだが、安全のため
     return {"slides": []}
@@ -933,7 +933,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
     
     # ステップ1: タイトル抽出
     title = extract_powerpoint_title(texts)
-    logger.info(f"Extracted PowerPoint title: {title.replace('\n', '\\n')}")
+    logger.info(f"📊 PowerPointタイトル抽出: {title.replace('\n', '\\n')}")
     
     # ステップ2: 10ページずつスライドタイトル抽出・スコアリング
     total_pages = len(texts)
@@ -943,12 +943,12 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         end_page = min(start_page + 9, total_pages - 1)
         try:
             slide_analysis = extract_titles_and_score(texts, start_page, end_page)
-            logger.info(f"Slide analysis for pages {start_page+1}-{end_page+1}/{total_pages}: {len(slide_analysis['slides'])} slides analyzed")
+            logger.info(f"📊 スライド分析（ページ{start_page+1}-{end_page+1}/{total_pages}）: {len(slide_analysis['slides'])}枚のスライドを分析")
             for slide in slide_analysis['slides']:
-                logger.info(f"  Page {slide['page']}: {slide['title']} (Score: {slide['score']} - {slide['reason']})")
+                logger.info(f"  ページ{slide['page']}: {slide['title']} （スコア: {slide['score']} - {slide['reason']}）")
             all_slides.extend(slide_analysis["slides"])
         except Exception as e:
-            logger.warning(f"Failed to analyze slides {start_page+1}-{end_page+1}: {e}")
+            logger.warning(f"⚠️ スライド分析に失敗（ページ{start_page+1}-{end_page+1}）: {e}")
     
     # ステップ3: 最高スコアのスライドを選択
     if not all_slides:
@@ -962,7 +962,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         max_score = sorted_slides[0]["score"]
         top_slides = [slide for slide in sorted_slides if slide["score"] == max_score]
 
-        logger.info(f"Selected slides: {', '.join([str(slide['page']) for slide in top_slides])}")
+        logger.info(f"🎯 選択されたスライド: {', '.join([str(slide['page']) for slide in top_slides])}")
 
         # 最高スコアのスライドのテキストを取得
         selected_texts = []
@@ -1130,7 +1130,7 @@ def traditional_summarize(texts: list[str]) -> str:
 def document_summarizer(state: State) -> State:
     """PDF文書を要約するエージェント"""
 
-    logger.info("document_summarizer")
+    logger.info("📝 文書を要約...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=Summary)
@@ -1140,7 +1140,7 @@ def document_summarizer(state: State) -> State:
     # state に target_reports が存在しないか None の場合に備えて正規化
     target_reports = state.get("target_reports")
     if not target_reports or (hasattr(target_reports, '__len__') and len(target_reports) == 0):
-        logger.info("Skipping document_summarizer")
+        logger.info("📝 文書要約をスキップ")
         return {
             **state,
             "messages": state.get("messages", []),
@@ -1155,7 +1155,7 @@ def document_summarizer(state: State) -> State:
 
     try:
         if current_index >= len(target_reports):
-            logger.info("All documents have been summarized")
+            logger.info("✅ 全文書の要約が完了しました")
             return state
 
         # 現在の文書のURLを取得
@@ -1163,16 +1163,16 @@ def document_summarizer(state: State) -> State:
         url = current_report.url
         name = current_report.name
 
-        logger.info(f"Processing {url}")
+        logger.info(f"📄 文書を処理中: {url}")
 
         # PDFを読み込んでテキストを抽出
         texts = load_pdf_as_text(url)
         if not texts:
-            logger.warning(f"Failed to load PDF: {url}")
+            logger.warning(f"⚠️ PDFの読み込みに失敗: {url}")
             summary_obj = Summary(url=url, name=name, content="")
             
             # 要約内容をログに出力
-            logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
+            logger.info(f"📝 要約: {summary_obj.content.replace('\n', '\\n')}")
             
             message = AIMessage(content=f"""
 ## 個別文書要約結果（読み込み失敗）
@@ -1196,11 +1196,11 @@ def document_summarizer(state: State) -> State:
                 top_scores = sorted(detection_detail["scores"].items(), key=lambda x: x[1], reverse=True)[:3]
                 score_summary = ", ".join([f"{cat}:{score}" for cat, score in top_scores])
                 if doc_reason:
-                    logger.info(f"Processing as {doc_type}-based document (scores: {score_summary}) - Reason: {doc_reason}")
+                    logger.info(f"📝 {doc_type}形式として処理中（スコア: {score_summary}）- 理由: {doc_reason}")
                 else:
-                    logger.info(f"Processing as {doc_type}-based document (scores: {score_summary})")
+                    logger.info(f"📝 {doc_type}形式として処理中（スコア: {score_summary}）")
             else:
-                logger.info(f"Processing as {doc_type}-based document")
+                logger.info(f"📝 {doc_type}形式として処理中")
 
             # タイプ別要約処理
             result: dict | None = None
@@ -1216,7 +1216,7 @@ def document_summarizer(state: State) -> State:
                 result = news_based_summarize(texts)
             elif doc_type == "survey":
                 # 調査・アンケート結果はスキップ
-                logger.info(f"Skipping survey document: {name} (type: {doc_type})")
+                logger.info(f"⏭️ 調査文書をスキップ: {name}（タイプ: {doc_type}）")
                 message = HumanMessage(
                     content=f"文書: {name}\nURL: {url}\n\n要約: (調査・アンケート結果のためスキップ)"
                 )
@@ -1228,7 +1228,7 @@ def document_summarizer(state: State) -> State:
                 }
             else:
                 # その他はスキップ
-                logger.info(f"Skipping document: {name} (type: {doc_type})")
+                logger.info(f"⏭️ 文書をスキップ: {name}（タイプ: {doc_type}）")
                 message = HumanMessage(
                     content=f"文書: {name}\nURL: {url}\n\n要約: (処理対象外のためスキップ)"
                 )
@@ -1246,7 +1246,7 @@ def document_summarizer(state: State) -> State:
             if current_index == 0 and not name:
                 if title and len(title) > 3:
                     current_report.name = title.replace('\n', ' ').strip()
-                    logger.info(f"Updated report name with title: {current_report.name}")
+                    logger.info(f"📝 資料名をタイトルで更新: {current_report.name}")
 
             # ステップ2: 要約をJSONに変換するプロンプト
             json_prompt = PromptTemplate(
@@ -1285,7 +1285,7 @@ URL: {url}
             summary_obj.detection_detail = detection_detail
 
             # 要約内容をログに出力
-            logger.info(f"Summary: {summary_obj.content.replace('\n', '\\n')}")
+            logger.info(f"📝 要約: {summary_obj.content.replace('\n', '\\n')}")
 
             # 詳細説明付きメッセージを作成
             message = AIMessage(content=f"""
@@ -1304,7 +1304,7 @@ URL: {url}
 """)
 
     except Exception as e:
-        logger.error(f"Error occurred while summarizing document: {str(e)}")
+        logger.error(f"❌ 文書要約中にエラーが発生: {str(e)}")
         if current_index < len(target_reports):
             current_report = target_reports[current_index]
             summary_obj = Summary(url=current_report.url, name=current_report.name, content="")

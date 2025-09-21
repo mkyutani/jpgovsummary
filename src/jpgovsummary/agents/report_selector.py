@@ -11,7 +11,7 @@ from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
 
 def report_selector(state: State) -> State:
     """Select reports to be used for summarization."""
-    logger.info("report_selector")
+    logger.info("🎯 資料を選択...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=ScoredReportList)
@@ -85,7 +85,7 @@ def report_selector(state: State) -> State:
 
     reports = result["reports"]
     if not reports or len(reports) == 0:
-        logger.info("No reports selected")
+        logger.info("📄 選択された資料はありません")
         reports = []
         target_reports = []
     else:
@@ -96,7 +96,7 @@ def report_selector(state: State) -> State:
         # 最高評価の資料をtarget_reportsに設定（プロンプトの指示に従う）
         highest_score = reports[0]["score"]
         target_reports = [r for r in reports if r["score"] == highest_score]
-        logger.info(f"Selected {len(target_reports)} reports with score {highest_score}")
+        logger.info(f"🎯 {len(target_reports)}件の資料を選択（スコア: {highest_score}）")
 
     # 簡潔な結果メッセージを作成
     system_message = HumanMessage(content="要約の精度向上のために、どの資料を追加で読むべきかを判断してください。")

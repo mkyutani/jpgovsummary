@@ -21,15 +21,15 @@ def overview_generator(state: State) -> dict:
     Returns:
         dict: A dictionary containing the generated summary message
     """
-    logger.info("overview_generator")
+    logger.info("📄 概要を生成...")
 
     # main_content_extractorの結果を取得
     if "main_content" not in state:
-        logger.error("main_content not found in state. overview_generator requires main_content_extractor to run first.")
+        logger.error("❌ メインコンテンツが見つかりません")
         return {"overview": "エラー: メインコンテンツが抽出されていません。", "messages": []}
 
     main_content = state["main_content"]
-    logger.info(f"Processing main_content with length: {len(main_content)}")
+    logger.info(f"📄 メインコンテンツを処理中（{len(main_content)}文字）")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
@@ -168,7 +168,7 @@ def overview_generator(state: State) -> dict:
     messages = [HumanMessage(content=content_message)]
     
     result = chain.invoke({"messages": messages}, Config().get())
-    logger.info(f"Overview: {result.content.replace('\n', '\\n')}")
+    logger.info(f"📄 概要: {result.content.replace('\n', '\\n')}")
     
     # 議事録検出フラグのチェックと処理
     meeting_minutes_detected = "[DETAILED_MINUTES_DETECTED]" in result.content
@@ -178,10 +178,10 @@ def overview_generator(state: State) -> dict:
     clean_overview = result.content
     if meeting_minutes_detected:
         clean_overview = clean_overview.replace("[DETAILED_MINUTES_DETECTED]", "").strip()
-        logger.info("Meeting minutes detected")
+        logger.info("📋 議事録を検出")
     if document_page_detected:
         clean_overview = clean_overview.replace("[DOCUMENT_PAGE_DETECTED]", "").strip()
-        logger.info("Document page detected")
+        logger.info("📄 文書ページを検出")
     
     # 会議かどうかを判定
     # 議事録が検出されている場合は確実に会議
@@ -214,6 +214,7 @@ def overview_generator(state: State) -> dict:
     # システムプロンプトを追加
     system_message = HumanMessage(content="会議の全体概要を生成してください。")
     
+    logger.info("")  # 空行で区切り
     return {
         "overview": clean_overview, 
         "messages": [system_message, detailed_message],
