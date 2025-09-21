@@ -849,26 +849,36 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int) -
     page_texts = texts[start_page:end_page+1]
     content = "\n\n".join([f"--- ページ {start_page + i + 1} ---\n{text}" for i, text in enumerate(page_texts)])
     
+    # スコアリング基準：振り返りより論点を優先
+    scoring_criteria = """
+        5点: アジェンダ・目次・検討事項・主な論点・まとめ・結論・骨子
+        4点: 要点・ポイント・とりまとめ・提案・(案)・取組・重要課題・今後の方針・スケジュール
+        3点: 振り返り・背景・課題・分析結果・戦略
+        2点: 説明・詳細・補足・参考資料・事例紹介
+        1点: その他・表紙・事務連絡"""
+
     prompt = PromptTemplate(
         input_variables=["content"],
-        template="""以下のPowerPoint資料の各ページからスライドタイトルを抽出し、重要度を5点満点でスコアリングしてください。
+        template=f"""以下のPowerPoint資料の各ページからスライドタイトルを抽出し、重要度を5点満点でスコアリングしてください。
 
         内容:
-        {content}
+        {{content}}
 
         ### スコアリング基準（1-5点）
-        5点: アジェンダ・目次・検討事項・まとめ・結論・今後の方針・スケジュール
-        4点: 骨子・要点・ポイント・とりまとめ・提案・(案)・取組
-        3点: 主要な論点・背景・課題
-        2点: 説明・詳細・補足
-        1点: その他
+        {scoring_criteria}
+
+        ### 重要な判定ポイント
+        - 「主な論点」「検討事項」「今回の論点」は5点（最重要）
+        - 「第○回の振り返り」「前回の振り返り」は3点（中程度）
+        - アジェンダや目次の中に複数項目が含まれる場合、実質的な論点部分を重視
+        - 論点提示 > 振り返り内容の優先度で判定してください
 
         各ページについて、ページ番号、タイトル、スコア、理由を抽出してください。
 
         ### 重要
         JSON形式で出力してください。最後の要素にはカンマを付けないでください。
 
-        {format_instructions}""",
+        {{format_instructions}}""",
     )
     
     chain = prompt | llm
