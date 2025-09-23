@@ -33,16 +33,14 @@ def report_enumerator(state: State) -> State:
 リンクが関連資料であるか否かの判断には、メインコンテンツのマークダウンの構造とコンテキストを注意深く分析します。
     """)
     assistant_prompt = AIMessagePromptTemplate.from_template("""
-以下の手順で処理を行ってください。
-
 ## 処理手順
-Step 1. 指定されたメインコンテンツのマークダウンに含まれるすべてのリンクを抽出し、リンク先のURLとリンク先のテキストを取得します。
+Step 1. 下記のメインコンテンツのマークダウンに含まれるすべてのリンクを抽出し、リンク先のURLとリンク先のテキストを取得します。
 Step 2. 取得した各リンクについて、以下の判断基準に照らし合わせて関連資料であるか否かを判断します。
 Step 3. 取得したすべてのリンクについて、リンク先のURLとリンク先のテキスト、及び、判断結果と判断理由を記述します。
 
 ### Step 1. リンク先のURLとリンク先のテキストの取得
-メインコンテンツのマークダウンのリンクをすべて抽出し、リンク先のURLとリンク先のテキストを取得します。
-すべてのリンクを漏れなく抽出してください。ただし、最初に読み込んだマークダウンには存在するがメインコンテンツではないリンクは出力に含める必要はありません。
+下記のメインコンテンツのマークダウンのリンクをすべて抽出し、リンク先のURLとリンク先のテキストを取得します。
+すべてのリンクを漏れなく抽出してください。メインコンテンツに含まれているリンクのみを処理対象とします。
 抽出したリンクは必ず出力に含めてください。
 
 ### Step 2. 関連資料であるか否かの判断
@@ -99,9 +97,16 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
 以下のフォーマットで出力してください：
 
 {format_instructions}
+
+## メインコンテンツ
+以下のマークダウンを処理対象とします：
+
+```markdown
+{main_content}
+```
     """)
     prompt = ChatPromptTemplate.from_messages(
-        [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
+        [system_prompt, assistant_prompt]
     )
     chain = prompt | llm | parser
     
@@ -112,7 +117,12 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
             if attempt > 0:
                 logger.info(f"再検索({attempt+1}回目)")
             result = chain.invoke(
-                {**state, "format_instructions": parser.get_format_instructions()}, Config().get()
+                {
+                    "main_content": state.get("main_content", ""),
+                    "url": state.get("url", ""),
+                    "format_instructions": parser.get_format_instructions()
+                }, 
+                Config().get()
             )
             break
             
@@ -153,11 +163,11 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
         reports = document_reports
 
     # 簡潔な結果メッセージを作成
-    system_message = HumanMessage(content="文書URLとその名前をマークダウンから抽出し、関連性を判定してください。")
+    system_message = HumanMessage(content="メインコンテンツから文書URLとその名前を抽出し、関連性を判定してください。")
     result_message = AIMessage(content=f"""
 ## 候補文書列挙結果
 
-**処理内容**: マークダウンから候補文書を抽出・判定
+**処理内容**: メインコンテンツから候補文書を抽出・判定
 **発見文書数**: {len(reports)}件
 **発見文書**: {', '.join([r['name'] for r in reports])}
 """)
@@ -167,5 +177,5 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
     return {
         **state, 
         "candidate_reports": CandidateReportList(reports=reports),
-        "messages": [system_message, result_message]
+        "messages": state.get("messages", []) + [system_message, result_message]
     }
