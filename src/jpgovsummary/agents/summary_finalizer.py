@@ -203,7 +203,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     # Handle improvement request
     # 会議 or 文書に応じて表現を変更
     subject_type = "会議" if is_meeting_page else "文書"
-    subject_expression = "[会議名]では〜が議論された" if is_meeting_page else "文書では〜が記載されている"
+    subject_expression = "「会議名」では〜が議論された" if is_meeting_page else "「文書名」では〜と記載されている"
     
     prompt = PromptTemplate(
         input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
@@ -230,6 +230,8 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
 - 読みやすく論理的な構成にする
 - {subject_type}名を適切に含める
 - 「{subject_expression}」の形式で表現する（会議名の前に「会議では」は付けない）
+- 文書の場合、「では」の重複を避ける：文書名に既に「では」が含まれている場合は追加しない
+- {subject_type}名、タイトルは必ず「」（鍵括弧）で囲む
 - より適切な日本語の文章に推敲する
 - **以下の情報は要約に含めない：**
   - {subject_type}の開催日時・日付
@@ -271,7 +273,7 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
     
     # 会議 or 文書に応じて表現を変更（短縮プロンプト用）
     subject_type = "会議" if is_meeting_page else "文書"
-    subject_expression = "[会議名]では〜が議論された" if is_meeting_page else "文書では〜が記載されている"
+    subject_expression = "「会議名」では〜が議論された" if is_meeting_page else "「文書名」では〜と記載されている"
     
     prompt = PromptTemplate(
         input_variables=["current_summary", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
@@ -297,6 +299,7 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
 - {subject_type}名を適切に含める
 - 「{subject_expression}」の形式で表現する（会議名の前に「会議では」は付けない）
 - 文書名の前に番号（文書1、文書2など）は付けない
+- 文書の場合、「では」の重複を避ける：文書名に既に「では」が含まれている場合は追加しない
 - 人間の改善意図を可能な限り反映する
 - より適切な日本語の文章に推敲する
 - **以下の情報は要約に含めない：**

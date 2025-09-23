@@ -146,7 +146,7 @@ def summary_integrator(state: State) -> State:
     try:
         # Step 1: 内容をまとめる（会議 or 文書に応じて表現を変更）
         subject_type = "会議" if is_meeting_page else "文書"
-        subject_expression = "[会議名]では〜が議論された" if is_meeting_page else "文書では〜が記載されている"
+        subject_expression = "「会議名」では〜が議論された" if is_meeting_page else "「文書名」では〜と記載されている"
         
         combined_summary_prompt = PromptTemplate(
             input_variables=["summaries", "max_chars", "subject_type", "subject_expression"],
@@ -165,6 +165,8 @@ def summary_integrator(state: State) -> State:
 - {subject_type}で扱われた複数の内容を適切にまとめてください
 - 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
 - 文書名の前に番号（文書1、文書2など）は付けないでください
+- 文書の場合、「では」の重複を避けてください：文書名に既に「では」が含まれている場合は追加しない
+- {subject_type}名、タイトルは必ず「」（鍵括弧）で囲んでください
 
 # {subject_type}で扱われた内容:
 {{summaries}}
@@ -219,6 +221,8 @@ def summary_integrator(state: State) -> State:
 - 文脈情報を考慮して、より一貫性のある要約を作成してください
 - 「{subject_expression}」の形式で表現してください（会議名の前に「会議では」は付けない）
 - 文書名の前に番号（文書1、文書2など）は付けないでください
+- 文書の場合、「では」の重複を避けてください：文書名に既に「では」が含まれている場合は追加しない
+- {subject_type}名、タイトルは必ず「」（鍵括弧）で囲んでください
 
 **文脈情報：**
 {{context_info}}
