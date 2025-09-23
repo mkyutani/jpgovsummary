@@ -20,7 +20,7 @@ def main_content_extractor(state: State) -> dict:
     Returns:
         dict: A dictionary containing the extracted main content
     """
-    logger.info("● メインコンテンツを抽出...")
+    logger.info("🟢 メインコンテンツを抽出...")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""

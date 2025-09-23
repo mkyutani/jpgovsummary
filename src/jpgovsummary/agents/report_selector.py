@@ -11,7 +11,7 @@ from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
 
 def report_selector(state: State) -> State:
     """Select reports to be used for summarization."""
-    logger.info("● 資料を選択...")
+    logger.info("🟢 資料を選択...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=ScoredReportList)

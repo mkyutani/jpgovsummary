@@ -1021,7 +1021,7 @@ def traditional_summarize(texts: list[str]) -> str:
 def document_summarizer(state: State) -> State:
     """PDF文書を要約するエージェント"""
 
-    logger.info("● 文書を要約...")
+    logger.info("🟢 文書を要約...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=Summary)

@@ -16,7 +16,7 @@ def bluesky_poster(state: State) -> State:
     """
     Human reviewerの後にBlueskyへの投稿を確認・実行するエージェント
     """
-    logger.info("● Blueskyに投稿...")
+    logger.info("🟢 Blueskyに投稿...")
     
     # 最終要約とURLを取得
     final_summary = state.get("final_review_summary") or state.get("final_summary", "")

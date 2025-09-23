@@ -11,7 +11,7 @@ def summary_finalizer(state: State) -> State:
     Summary finalizer agent for final summary quality assurance and character limit validation.
     Provides bidirectional Q&A functionality for iterative improvement and automatic shortening.
     """
-    logger.info("● 最終調整を行います")
+    logger.info("🟢 最終調整を行います")
 
     llm = Model().llm()
     
@@ -56,7 +56,7 @@ def summary_finalizer(state: State) -> State:
             total_chars = len(current_summary) + len(url) + 1
             if total_chars > 300:
                 # Generate shortened version
-                logger.info(f"要約が{total_chars}文字で長すぎるため再生成します")
+                logger.warning(f"⚠️ 要約が{total_chars}文字で長すぎるため再生成します")
                 shortened_summary = _generate_shortened_summary(
                     llm, current_summary, overview, target_report_summaries, url, is_meeting_page
                 )

@@ -24,7 +24,7 @@ def report_enumerator(state: State) -> State:
     Returns:
         State: The updated state with extracted document information
     """
-    logger.info("● 関連資料を列挙...")
+    logger.info("🟢 関連資料を列挙...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=CandidateReportList)

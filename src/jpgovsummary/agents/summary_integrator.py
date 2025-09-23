@@ -88,7 +88,7 @@ def _format_context_info(context: dict) -> str:
 
 def summary_integrator(state: State) -> State:
     """複数の資料の要約を統合し、最終的な要約を生成するエージェント"""
-    logger.info("● 各資料の要約を統合します")
+    logger.info("🟢 各資料の要約を統合します")
 
     llm = Model().llm()
 

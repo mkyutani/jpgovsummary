@@ -48,7 +48,7 @@ def html_loader(html_url: str) -> str:
     Returns:
         str: markdown of the page
     """
-    logger.info("● HTMLを読み込み...")
+    logger.info("🟢 HTMLを読み込み...")
 
     markdown = load_html_as_markdown(html_url)
     logger.info(f"読み込み結果: {len(markdown)}文字")
