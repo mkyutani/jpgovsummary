@@ -298,9 +298,9 @@ PDFテキスト:
     }
 
     sorted_detail_info = sorted(detail_info["scores"].items(), key=lambda x: x[1], reverse=True)
-    logger.info(f"文書タイプを推定しました: {', '.join([f'{cat}:{score}' for cat, score in sorted_detail_info])}")
-    logger.info(f"{doc_type}の推定理由: {doc_reason}")
-    logger.info(f"{doc_type}の根拠: {selected_evidence}")
+    logger.info(f"この文書を{doc_type}と推定しました({', '.join([f'{cat}:{score}' for cat, score in sorted_detail_info])})")
+    logger.info(f"推定理由: {doc_reason.replace('\n', '\\n')}")
+    logger.info(f"根拠: {selected_evidence.replace('\n', '\\n')}")
 
     return doc_type, doc_reason, selected_evidence, detail_info
 
@@ -879,15 +879,29 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
 {content}
 
 ### 要約作成
-以下の構成で簡潔に要約してください：
-- 資料の目的・背景
-- 主要な検討事項・論点
-- 結論・提案・今後の方向性
+PowerPoint資料の内容に応じて、以下から適切な項目を選択して要約してください：
+
+**基本項目（必須）：**
+- 資料の目的・概要
+
+**内容項目（該当するもの）：**
+- 背景・課題（政策検討資料の場合）
+- 主要な検討事項・論点（政策検討資料の場合）
+- 実績・成果（事業報告の場合）
+- 制度・仕組みの要点（説明資料の場合）
+- 計画・施策（計画資料の場合）
+
+**結論項目（該当するもの）：**
+- 結論・提案・方向性（検討資料の場合）
+- 今後の予定・課題（実績・計画資料の場合）
+- 重要なポイント（説明資料の場合）
 
 ### 出力形式
 要約内容のみを出力
 
 ### 制約
+- 資料の性質に最も適した構成を選択
+- 該当しない項目は無理に含めない
 - 簡潔で分かりやすく
 - 提供されたスライドの内容のみ使用
 - 推測や補完は行わない
