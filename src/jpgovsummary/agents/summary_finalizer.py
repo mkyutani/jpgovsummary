@@ -11,7 +11,7 @@ def summary_finalizer(state: State) -> State:
     Summary finalizer agent for final summary quality assurance and character limit validation.
     Provides bidirectional Q&A functionality for iterative improvement and automatic shortening.
     """
-    logger.info("✨ 最終調整...")
+    logger.info("● 最終調整を行います")
 
     llm = Model().llm()
     
@@ -56,7 +56,7 @@ def summary_finalizer(state: State) -> State:
             total_chars = len(current_summary) + len(url) + 1
             if total_chars > 300:
                 # Generate shortened version
-                logger.info(f"📊 要約が{total_chars}文字（300文字制限超過）、短縮版を生成中...")
+                logger.info(f"要約が{total_chars}文字で長すぎるため再生成します")
                 shortened_summary = _generate_shortened_summary(
                     llm, current_summary, overview, target_report_summaries, url, is_meeting_page
                 )
@@ -76,12 +76,11 @@ def summary_finalizer(state: State) -> State:
                 continue
 
             if batch:
-                logger.info("🤖 人間レビューをスキップ（バッチモード）")
+                logger.info("バッチモードのため人間レビューをスキップします")
                 state["review_approved"] = True
                 break
 
-            print("💬 OK または ^D で承認、改善要求の入力、または Enter でエディター起動")
-            user_input = _enhanced_input("You>")
+            user_input = _enhanced_input("OK または ^D で承認、改善要求の入力、または Enter でエディター起動します\nYou>")
 
             # Check if user wants to approve
             if _is_positive_response(user_input):
@@ -90,7 +89,6 @@ def summary_finalizer(state: State) -> State:
                 break
             elif user_input.strip():
                 # Process 1-line improvement request directly
-                print(f"🔄")
                 new_summary = _generate_improved_summary(llm, current_summary, user_input, overview, target_report_summaries, url, is_meeting_page)
                 if new_summary and new_summary != current_summary:
                     current_summary = new_summary
@@ -158,14 +156,14 @@ def summary_finalizer(state: State) -> State:
                     else:
                         logger.error("❌ エディター入力を処理できませんでした")
                 else:
-                    logger.info("💬 変更はありませんでした")
+                    logger.info("変更はありませんでした")
                 
         except KeyboardInterrupt:
-            logger.info("💬 キーボード中断により現在の要約を使用")
+            logger.info("キーボード中断により現在の要約を使用")
             state["review_approved"] = False
             break
         except EOFError:
-            logger.info("💬 EOF検出により現在の要約を使用")
+            logger.info("EOF検出により現在の要約を使用")
             state["review_approved"] = False
             break
     
@@ -175,7 +173,6 @@ def summary_finalizer(state: State) -> State:
     # Display final confirmed summary
     logger.info("✅ レビュー完了！")
     _display_current_summary(current_summary, url=url)
-    logger.info("")  # 空行で区切り
 
     # Update messages with final reviewed summary
     message = AIMessage(content=f"{current_summary}\n{url}")
@@ -398,21 +395,16 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
         updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url, is_meeting_page)
     else:
         # No changes made
-        logger.info("💬 変更は検出されませんでした")
+        logger.info("変更は検出されませんでした")
         updated_summary = current_summary
 
     return updated_summary.strip().replace('\n', '')
 
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
-    summary_chars = len(final_summary)
-    url_chars = len(url)
-    # 要約 + 改行1文字 + URL = 合計文字数
-    total_chars = summary_chars + url_chars + 1
-    
-    logger.info(f"📋 現在の要約（要約: {summary_chars}文字、URL: {url_chars}文字、合計: {total_chars}文字）:")
+    summary_message = f"{final_summary}\n{url}"
     logger.info(f"📄 {final_summary}")
-    logger.info(f"🔗 URL: {url}")
+    logger.info(f"🔗 {url}")
 
 def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -> str:
     """Full-screen editor using prompt_toolkit"""

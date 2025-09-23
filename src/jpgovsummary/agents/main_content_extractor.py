@@ -20,7 +20,7 @@ def main_content_extractor(state: State) -> dict:
     Returns:
         dict: A dictionary containing the extracted main content
     """
-    logger.info("🔍 メインコンテンツを抽出...")
+    logger.info("● メインコンテンツを抽出...")
 
     llm = Model().llm()
     system_prompt = SystemMessagePromptTemplate.from_template("""
@@ -65,6 +65,5 @@ def main_content_extractor(state: State) -> dict:
     result = chain.invoke(state, Config().get())
     logger.info(f"メインコンテンツ: {result.content.replace('\n', '\\n').strip()}")
     logger.info(f"✅ {len(result.content)}文字のメインコンテンツを抽出しました")
-    logger.info("")
 
     return {"main_content": result.content, "messages": [result]}

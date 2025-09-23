@@ -24,7 +24,7 @@ def report_enumerator(state: State) -> State:
     Returns:
         State: The updated state with extracted document information
     """
-    logger.info("📋 関連資料を列挙...")
+    logger.info("● 関連資料を列挙...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=CandidateReportList)
@@ -163,7 +163,6 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
 """)
 
     logger.info(f"✅ {len(reports)}件の関連資料を発見しました: {', '.join([r['name'] for r in reports])}")
-    logger.info("")
 
     return {
         **state, 

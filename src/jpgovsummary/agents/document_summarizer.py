@@ -457,7 +457,6 @@ def extract_word_title(texts: list[str]) -> str:
     chain = title_prompt | llm
     result = chain.invoke({"text": merged_text, "pages": title_pages})
     extracted_title = result.content.strip()
-    logger.info(f"Wordタイトル抽出: {extracted_title}")
     return extracted_title
 
 
@@ -517,7 +516,6 @@ def extract_word_table_of_contents(texts: list[str]) -> str:
     result = chain.invoke({"text": merged_text, "pages": toc_pages})
     
     extracted_toc = result.content.strip()
-    logger.info(f"📋 Word目次抽出: {len(extracted_toc)}文字")
     
     return extracted_toc
 
@@ -570,7 +568,6 @@ def create_summary_from_toc(title: str, table_of_contents: str) -> str:
     })
     
     summary = result.content.strip()
-    logger.info(f"📄 目次から要約生成: {len(summary)}文字")
     
     return summary
 
@@ -778,16 +775,18 @@ def word_based_summarize(texts: list[str]) -> dict:
     
     # ステップ1: タイトル抽出
     title = extract_word_title(texts)
-    
+    logger.info(f"このスライドのタイトルは「{title.replace('\n', '\\n')}」です")
+
     # ステップ2: 目次抽出
     table_of_contents = extract_word_table_of_contents(texts)
     
     # ステップ3: 目次から要約を作成
     if table_of_contents and table_of_contents != "目次なし":
+        logger.info("目次から要約を作成します")
         summary = create_summary_from_toc(title, table_of_contents)
     else:
         # 目次がない場合は従来ロジックを使用
-        logger.info("📄 目次が見つからないため、従来の要約方式を使用")
+        logger.info("目次が見つからないため、全文から要約を作成します")
         summary = traditional_summarize(texts)
     
     return {"title": title, "summary": summary}
@@ -944,7 +943,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
     
     # ステップ1: タイトル抽出
     title = extract_powerpoint_title(texts)
-    logger.info(f"PowerPointのタイトルは「{title.replace('\n', '\\n')}」です")
+    logger.info(f"このスライドのタイトルは「{title.replace('\n', '\\n')}」です")
     
     # ステップ2: 指定ページ数ずつスライドタイトル抽出・スコアリング
     pages_per_batch = 20  # 一度に処理するページ数
@@ -968,13 +967,15 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         merged_content = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
         page_info = f"全{total_pages}ページ（スライド分析失敗）"
         selected_slide_info = "分析失敗のため全ページ使用"
+
+        logger.info(f"すべてのスライドを使って要約します")
     else:
         # スコアでソートし、最高スコアのスライドのみを選択
         sorted_slides = sorted(all_slides, key=lambda x: x.score, reverse=True)
         max_score = sorted_slides[0].score
         top_slides = [slide for slide in sorted_slides if slide.score == max_score]
 
-        logger.info(f"🎯 選択されたスライド: {', '.join([str(slide.page) for slide in top_slides])}")
+        logger.info(f"以下のスライドを選択して要約します: {', '.join([str(slide.page) for slide in top_slides])}")
 
         # 最高スコアのスライドのテキストを取得
         selected_texts = []
@@ -1142,7 +1143,7 @@ def traditional_summarize(texts: list[str]) -> str:
 def document_summarizer(state: State) -> State:
     """PDF文書を要約するエージェント"""
 
-    logger.info("📝 文書を要約...")
+    logger.info("● 文書を要約...")
 
     llm = Model().llm()
     parser = JsonOutputParser(pydantic_object=Summary)
@@ -1195,58 +1196,64 @@ def document_summarizer(state: State) -> State:
 **生成された要約**:
 (PDFを読み込めませんでした)
 """)
+            return {
+                **state,
+                "messages": [message],
+                "target_report_summaries": state.get("target_report_summaries", []),
+                "target_report_index": target_report_index,
+            }
+
+        logger.info(f"{name}をテキスト化しました({len(texts)}ページ)")
+        # 文書タイプを判定
+        doc_type, doc_reason, evidence_text, detection_detail = detect_document_type(texts)
+        
+        # タイプ別要約処理
+        result: dict | None = None
+        if doc_type == "word":
+            result = word_based_summarize(texts)
+        elif doc_type == "powerpoint":
+            result = powerpoint_based_summarize(texts)
+        elif doc_type == "agenda":
+            result = agenda_summarize(texts)
+        elif doc_type == "participants":
+            result = participants_summarize(texts)
+        elif doc_type == "news":
+            result = news_based_summarize(texts)
         else:
-            logger.info(f"{name}をテキスト化しました({len(texts)}ページ)")
-            # 文書タイプを判定
-            doc_type, doc_reason, evidence_text, detection_detail = detect_document_type(texts)
-            
-            # タイプ別要約処理
-            result: dict | None = None
-            if doc_type == "word":
-                result = word_based_summarize(texts)
-            elif doc_type == "powerpoint":
-                result = powerpoint_based_summarize(texts)
-            elif doc_type == "agenda":
-                result = agenda_summarize(texts)
-            elif doc_type == "participants":
-                result = participants_summarize(texts)
-            elif doc_type == "news":
-                result = news_based_summarize(texts)
-            else:
-                # SurveyとOtherはスキップ
-                logger.info(f"文書をスキップ: {name}（タイプ: {doc_type}）")
-                message = HumanMessage(
-                    content=f"文書: {name}\nURL: {url}\n\n要約: (処理対象外のためスキップ)"
-                )
-                return {
-                    **state,
-                    "messages": [message],
-                    "target_report_summaries": state.get("target_report_summaries", []),
-                    "target_report_index": target_report_index,
-                }
-
-            title = result.get('title', name)
-            summary = result.get('summary', '')
-            # 要約内容をログに出力
-            logger.info(f"この資料の要約: {summary.replace('\n', '\\n').strip()}")
-
-            # 最初の文書でタイトルが抽出できた場合、reportのnameを更新
-            if current_index == 0 and not name:
-                if title and len(title) > 3:
-                    current_report.name = title.replace('\n', ' ').strip()
-                    logger.info(f"この資料の正式なタイトルは「{current_report.name}」です")
-
-            # 直接Summaryオブジェクトを作成
-            summary_obj = Summary(
-                content=summary,
-                url=url,
-                name=title if title else name,
-                document_type=doc_type,
-                detection_detail=detection_detail
+            # SurveyとOtherはスキップ
+            logger.info(f"文書をスキップ: {name}（タイプ: {doc_type}）")
+            message = HumanMessage(
+                content=f"文書: {name}\nURL: {url}\n\n要約: (処理対象外のためスキップ)"
             )
+            return {
+                **state,
+                "messages": [message],
+                "target_report_summaries": state.get("target_report_summaries", []),
+                "target_report_index": target_report_index,
+            }
 
-            # 詳細説明付きメッセージを作成
-            message = AIMessage(content=f"""
+        title = result.get('title', name)
+        summary = result.get('summary', '')
+        # 要約内容をログに出力
+        logger.info(f"この資料の要約: {summary.replace('\n', '\\n').strip()}")
+
+        # 最初の文書でタイトルが抽出できた場合、reportのnameを更新
+        if current_index == 0 and not name:
+            if title and len(title) > 3:
+                current_report.name = title.replace('\n', ' ').strip()
+                logger.info(f"この資料の正式なタイトルは「{current_report.name}」です")
+
+        # 直接Summaryオブジェクトを作成
+        summary_obj = Summary(
+            content=summary,
+            url=url,
+            name=title if title else name,
+            document_type=doc_type,
+            detection_detail=detection_detail
+        )
+
+        # 詳細説明付きメッセージを作成
+        message = AIMessage(content=f"""
 ## 個別文書要約結果
 
 **処理内容**: PDF文書の個別要約を生成
@@ -1283,6 +1290,13 @@ def document_summarizer(state: State) -> State:
 (エラーのため要約できませんでした)
 """)
 
+        return {
+            **state,
+            "messages": [message],
+            "target_report_summaries": state.get("target_report_summaries", []),
+            "target_report_index": target_report_index,
+        }
+
     # 既存のsummariesを取得し、新しい要約を追加
     current_summaries = state.get("target_report_summaries", [])
     new_summaries = current_summaries + ([summary_obj] if summary_obj else [])
@@ -1291,7 +1305,6 @@ def document_summarizer(state: State) -> State:
     system_message = HumanMessage(content="PDF文書の内容を読み取り、要約を作成してください。")
 
     logger.info(f"✅ {summary_obj.name}の要約を作成しました")
-    logger.info("")
 
     return {
         **state,

@@ -35,7 +35,9 @@ class ColorFormatter(logging.Formatter):
             return f"\033[31m{msg}\033[0m"  # 赤
         elif record.levelno == logging.CRITICAL:
             return f"\033[31m{msg}\033[0m"  # 赤
-        elif any(emoji in msg for emoji in ["✅", "🔍", "📄", "📋", "🎯", "📝", "🔄", "✨", "🐦"]):
+        elif "●" in msg:
+            return f"\n\n\033[32m{msg}\033[0m"  # 緑
+        elif any(emoji in msg for emoji in ["✅", "🔍", "📄", "🔗", "🔄", "💬"]):
             return msg  # デフォルト色
         else:
             return f"\033[90m{msg}\033[0m"  # 薄いグレー

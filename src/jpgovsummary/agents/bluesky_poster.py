@@ -16,7 +16,7 @@ def bluesky_poster(state: State) -> State:
     """
     Human reviewerの後にBlueskyへの投稿を確認・実行するエージェント
     """
-    logger.info("🐦 Blueskyに投稿...")
+    logger.info("● Blueskyに投稿...")
     
     # 最終要約とURLを取得
     final_summary = state.get("final_review_summary") or state.get("final_summary", "")
@@ -46,14 +46,13 @@ def bluesky_poster(state: State) -> State:
                             uri = result_data["data"].get("uri")
                     except (json.JSONDecodeError, KeyError):
                         pass
-                logger.info(f"✅ Blueskyに投稿完了: {uri}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_content"] = post_content
                 state["bluesky_post_requested"] = True
                 if post_result.get("result"):
                     state["bluesky_post_response"] = str(post_result["result"])
             else:
-                logger.error(f"❌ Bluesky投稿に失敗: {post_result['error']}")
+                logger.error(f"❌ Bluesky投稿に失敗しました: {post_result['error']}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_requested"] = True
         else:
@@ -61,7 +60,7 @@ def bluesky_poster(state: State) -> State:
             state["bluesky_post_requested"] = False
             
     except Exception as e:
-        logger.error(f"❌ bluesky_posterエラー: {type(e).__name__}: {str(e)}")
+        logger.error(f"❌ Bluesky投稿で想定しないエラーが発生しました: {type(e).__name__}: {str(e)}")
         state["bluesky_post_completed"] = True
         
     return state
@@ -155,7 +154,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
         try:
             tools = await client.get_tools()
         except Exception as e:
-            logger.error(f"❌ MCPツール取得に失敗: {str(e)}")
+            logger.error(f"❌ MCPツール取得に失敗しました: {str(e)}")
             return {
                 "success": False,
                 "content": content,
@@ -208,7 +207,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                                 break
                 
                 if tool_used:
-                    logger.info(f"🔧 使用ツール: {tool_used}")
+                    logger.info(f"{tool_used}を使用します")
                 
                 # 実際のツール結果がある場合はそれを優先、なければエージェントレスポンスを使用
                 result_to_check = actual_tool_result if actual_tool_result is not None else response_content
@@ -244,7 +243,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                     else:
                         # ツールが実行されていて、エラーでない場合は成功とみなす（フォールバック）
                         if actual_tool_result is not None:
-                            logger.info("✅ ツール実行成功（エラーパターンなし）")
+                            logger.info("✅ ツール実行に成功しました")
                             return {
                                 "success": True,
                                 "content": content,

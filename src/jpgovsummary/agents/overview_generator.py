@@ -21,7 +21,7 @@ def overview_generator(state: State) -> dict:
     Returns:
         dict: A dictionary containing the generated summary message
     """
-    logger.info("📄 概要を生成...")
+    logger.info("● 概要を生成...")
 
     # main_content_extractorの結果を取得
     if "main_content" not in state:
@@ -216,7 +216,6 @@ def overview_generator(state: State) -> dict:
     system_message = HumanMessage(content="会議の全体概要を生成してください。")
 
     logger.info(f"✅ 概要を作成しました: {overview}")
-    logger.info("")
 
     return {
         "overview": overview, 

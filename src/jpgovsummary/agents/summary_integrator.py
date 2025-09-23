@@ -88,7 +88,7 @@ def _format_context_info(context: dict) -> str:
 
 def summary_integrator(state: State) -> State:
     """複数の資料の要約を統合し、最終的な要約を生成するエージェント"""
-    logger.info("🔄 要約を統合...")
+    logger.info("● 各資料の要約を統合します")
 
     llm = Model().llm()
 
@@ -109,9 +109,11 @@ def summary_integrator(state: State) -> State:
     max_chars = max(50, 500 - url_length - 1)  # 最低50文字は確保
 
     if not target_report_summaries:
-        logger.info("📄 レポート要約が見つかりませんでした")
         final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"
         message = HumanMessage(content=f"{final_summary}\n{url}")
+
+        logger.info("資料の要約がないため要約を統合できませんでした。")
+
         return {**state, "messages": [message], "final_summary": final_summary}
 
     # 各資料の要約を1つのテキストに結合
@@ -132,11 +134,13 @@ def summary_integrator(state: State) -> State:
     ]
 
     if not valid_summaries:
-        logger.warning("⚠️ 有効な要約が見つかりませんでした")
         final_summary = overview if overview else ""
         if not final_summary:
             final_summary = ""
         message = HumanMessage(content=f"{final_summary}\n{url}")
+
+        logger.warning("⚠️ 有効な要約がないため要約を統合できませんでした。")
+
         return {**state, "messages": [message], "final_summary": final_summary}
 
     try:
@@ -186,11 +190,13 @@ def summary_integrator(state: State) -> State:
 
         # 統合結果が空または無意味な場合のチェック
         if not combined_summary or len(combined_summary) < 1:
-            logger.warning("⚠️ 統合要約が短すぎるかありません")
             final_summary = overview if overview else ""
             if not final_summary:
                 final_summary = ""
             message = HumanMessage(content=f"{final_summary}\n{url}")
+
+            logger.warning("⚠️ 統合要約が短すぎるかありません")
+
             return {**state, "messages": [message], "final_summary": final_summary}
 
         # Step 2: 統合した要約とoverviewを合わせて最終要約を作成
@@ -252,16 +258,22 @@ def summary_integrator(state: State) -> State:
         final_summary = final_result.content.strip()
 
         # Step 3: "作成した要約\nURL"の形式でmessagesに格納
-        message = HumanMessage(content=f"{final_summary}\n{url}")
+        summary_message = f"{final_summary}\n{url}"
+
+        message = HumanMessage(content=summary_message)
         system_message = HumanMessage(content="複数の要約を統合して、最終的な要約を作成してください。")
 
+        logger.info(summary_message.replace('\n', '\\n'))
+        logger.info(f"✅ 要約を統合しました({len(summary_message)}文字)")
+    
         return {**state, "messages": [system_message, message], "final_summary": final_summary}
 
     except Exception as e:
-        logger.error(f"❌ 要約統合中にエラーが発生: {str(e)}")
         # エラー時はoverviewをそのまま使用
         final_summary = overview if overview else "要約の統合中にエラーが発生しました。"
         message = HumanMessage(content=f"{final_summary}\n{url}")
         system_message = HumanMessage(content="複数の要約を統合して、最終的な要約を作成してください。")
+
+        logger.error(f"❌ 要約統合中にエラーが発生: {str(e)}")
 
         return {**state, "messages": [system_message, message], "final_summary": final_summary}
