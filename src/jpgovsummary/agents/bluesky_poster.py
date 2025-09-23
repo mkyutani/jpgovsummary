@@ -302,7 +302,7 @@ def _format_bluesky_content(summary: str, url: str) -> str:
 def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> bool:
     """
     ユーザーにBluesky投稿の意思を確認（シンプル版）
-    ^C: false (キャンセル), ^D: true (yes)
+    ^C: false (キャンセル), ^D: false (no)
     """
     # シンプルなY/n確認
     while True:
@@ -317,8 +317,8 @@ def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> 
             # ^C: キャンセル (false)
             return False
         except EOFError:
-            # ^D: yes として処理
-            return True
+            # ^D: no として処理
+            return False
 
 
 def _safe_input(prompt: str, default: str = "?") -> str:
