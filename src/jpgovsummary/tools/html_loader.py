@@ -47,7 +47,8 @@ def load_html_as_markdown(url: str) -> str:
         # Handle local file
         file_path = get_local_file_path(url)
         validate_local_file(file_path)
-        
+        logger.info(f"🟢 {file_path} (HTML)を読み込みます")
+
         # Read local HTML file content
         with open(file_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
@@ -55,6 +56,7 @@ def load_html_as_markdown(url: str) -> str:
         return _normalize_and_convert_html(html_content)
     else:
         # Handle remote URL
+        logger.info(f"🟢 {url} (HTML)を読み込みます")
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
@@ -62,24 +64,3 @@ def load_html_as_markdown(url: str) -> str:
         response.raise_for_status()
         
         return _normalize_and_convert_html(response.content)
-
-
-@tool
-def html_loader(html_url: str) -> str:
-    """
-    ## HTML Loader
-
-    Load HTML page into markdown string.
-
-    Args:
-        html_url (str): URL of the page with ending .html
-
-    Returns:
-        str: markdown of the page
-    """
-    logger.info("🟢 HTMLを読み込み...")
-
-    markdown = load_html_as_markdown(html_url)
-    logger.info(f"読み込み結果: {len(markdown)}文字")
-
-    return markdown

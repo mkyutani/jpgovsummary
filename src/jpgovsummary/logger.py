@@ -139,6 +139,7 @@ def set_batch_mode(batch: bool = False):
 # ロガーの設定
 logger = logging.getLogger("jpgovsummary")
 logger.setLevel(logging.INFO)
+logger.propagate = False
 
 # ハンドラーの設定
 handler = logging.StreamHandler(sys.stderr)
