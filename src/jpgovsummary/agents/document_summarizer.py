@@ -41,8 +41,8 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
     
     llm = Model().llm()
     parser = PydanticOutputParser(pydantic_object=DocumentTypeAnalysis)
-    # 最初の数ページを分析用に取得（最大5ページ）
-    pages_to_analyze = min(5, len(texts))
+    # 最初の数ページを分析用に取得（最大10ページ）
+    pages_to_analyze = min(10, len(texts))
     sample_texts = texts[:pages_to_analyze]
     logger.info(f"先頭{len(sample_texts)}ページを分析して文書タイプを判定します")
 
@@ -65,12 +65,34 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
 - 議事録（発言内容・議論の記録）
 - 詳細な説明、分析、報告書
 - ガイドライン、仕様書、制度説明
+- **Word特有の文章的特徴：**
+    - 完全な文章構造：主語・述語が明確で、文章として完結している
+    - 段落構成：まとまった内容を段落単位で展開
+    - 論理的な文章展開：序論・本論・結論の流れや因果関係の説明
+    - 詳細な説明：背景・経緯・詳細な分析内容を含む
+    - 引用・参照：「〜によると」「〜に記載された」などの引用表現
+    - 助詞の適切な使用：「は」「が」「を」「に」「で」など助詞を用いた自然な日本語
+    - 敬語・丁寧語：「〜です」「〜ます」「〜でございます」などの丁寧な表現
 
 **2. PowerPoint資料 (powerpoint)**
 - スライド形式の実質的なプレゼンテーション内容
 - 分析結果、提案、説明資料
 - 図表と説明の組み合わせ
 - 概要資料、サマリー資料
+- **PowerPoint特有の構造的特徴：**
+    - スライドタイトル形式：各セクションに短く簡潔な見出しがある
+    - ページ構成：1つのトピックを1-2ページで完結させる構成
+    - 視覚的な図表：「施策のイメージ」「観測点の例」など、図表を含む説明がある
+- **PowerPoint特有の内容構成：**
+    - 箇条書き中心：「●」「・」「○」マークを使った箇条書きが多用されている
+    - 概要・要約形式：詳細な説明よりも要点を簡潔にまとめた構成
+    - 表形式データが多い：予算額などの数値データが表形式で整理されている
+    - キーワード中心：完全な文章より、キーワードやフレーズが中心
+    - 階層構造：大項目→小項目の明確な階層構造を持つ
+    - 体言止めの多用：「〜について」「〜の検討」「〜の状況」など名詞で終わる表現
+    - プレゼン特有の語彙：「ポイント」「まとめ」「課題」「今後の方向性」「スケジュール」などのセクション分け
+    - 数値の視覚的強調：金額・割合・件数などが目立つように配置
+    - 図表参照：「下記のとおり」「以下に示す」「図表○参照」などの表現
 
 **3. 議事次第 (agenda)**
 - 会議の議事次第、議事日程、アジェンダ
@@ -111,6 +133,8 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
 - 上記6分類に明確に該当しない文書
 
 ### 重要な区別ポイント
+
+**基本的な文書分類：**
 - 議事録（実際の発言記録）→ word
 - 議事次第（スケジュールのみ）→ agenda
 - 議事次第+参加者一覧（混合文書）→ agenda（議事次第が主目的）
@@ -118,15 +142,33 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
 - **調査・アンケート結果（質問と回答データ）→ survey**
 - **単なるデータ表示（参加者一覧など）→ participants**
 - **実質的な調査結果（質問と回答の対応）→ survey**
+
+**PowerPoint vs Word の特別判定基準：**
+1. **箇条書きの割合**：ページの70%以上が箇条書き → PowerPoint
+2. **完全文の割合**：完全な文章が連続して3行以上 → Word
+3. **ページタイトルの存在**：各ページに明確なタイトル → PowerPoint
+4. **段落の長さ**：3行以上の段落が複数 → Word
+5. **体言止めの頻度**：名詞で終わる表現が多い → PowerPoint
+6. **図表参照表現**：「図1参照」「下記のとおり」等 → PowerPoint
+
+**その他の判定基準：**
 - 実質的内容の有無が重要な判断基準
 - **文書の主要目的を判定基準とし、付随的な情報は無視する**
 - **表の目的が重要：名簿・リスト vs 調査結果・データ分析**
 
 ### 判定のポイント
-- 文章の長さ：Word→長い段落、PowerPoint→短いフレーズ
-- 構造：Word→章節構造、PowerPoint→スライド構造
-- 箇条書きの使用頻度：PowerPointで頻繁に使用
-- タイトルの扱い：PowerPointでは各ページに明確なタイトル
+
+**Word vs PowerPoint の重要な区別基準：**
+- **文章の長さ**：Word→連続した長い段落・文章、PowerPoint→短いフレーズ・キーワード
+- **構造**：Word→章節構造・論理的な文章展開、PowerPoint→スライド構造・1ページ完結型
+- **箇条書きの使用頻度**：Word→段落中心で箇条書きは補助的、PowerPoint→箇条書き中心の構成
+- **タイトルの扱い**：Word→文書全体の章タイトル、PowerPoint→各ページに明確なスライドタイトル
+- **文章の完全性**：Word→完全な文・段落、PowerPoint→体言止め・キーワード列挙
+- **説明の詳細度**：Word→詳細な説明・背景記述、PowerPoint→要点・概要の提示
+- **視覚的要素**：Word→文章主体、PowerPoint→図表・箇条書き主体
+- **ページあたりの情報量**：Word→高密度な文章、PowerPoint→視覚的に整理された少ない情報
+
+**その他の判定基準：**
 - **表の内容：survey→調査データ・統計、participants→人名・組織のリスト**
 - **数値の種類：survey→集計値・割合・評価点、others→連絡先・番号**
 - **文書の目的：survey→調査結果の報告、others→情報の整理・提供**
@@ -192,6 +234,18 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
 - 各スコア（1～5）は、記述された理由と一貫性を保ってください。
 - 複数カテゴリーが同じ高スコアにならないよう注意してください。
 - 最後に、最も可能性が高いカテゴリーを1つ明示してください。
+
+### PowerPoint vs Word の判定を重点的に行ってください
+**重要**: PowerPoint由来の文書がWord文書と誤判定されるケースが多発しているため、以下の特徴を特に注意深く確認してください：
+
+1. **箇条書きの多用** - 「●」「・」「○」が頻繁に使用されている
+2. **短いフレーズ構成** - 完全な文章ではなく、キーワードや短いフレーズ中心
+3. **各ページのタイトル** - ページごとに明確なスライドタイトルがある
+4. **体言止めの表現** - 「〜について」「〜の検討」など名詞で終わる表現
+5. **視覚的なレイアウト** - 図表や表が多く、文章は補助的
+6. **1ページ完結型** - 各ページで1つのトピックが完結している
+
+これらの特徴が複数確認できる場合は、PowerPointとして判定する確率を高めてください。
 
 ### 分析対象
 総ページ数: {total_pages}ページ
@@ -746,13 +800,13 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
     page_texts = texts[start_page:end_page+1]
     content = "\n\n".join([f"--- ページ {start_page + i + 1} ---\n{text}" for i, text in enumerate(page_texts)])
     
-    # スコアリング基準：振り返りより論点を優先
+    # スコアリング基準：文書タイトルとの関連性も重視
     scoring_criteria = """
-5点: アジェンダ・目次・検討事項・主な論点・まとめ・結論・骨子
-4点: 要点・ポイント・とりまとめ・提案・(案)・取組・重要課題・今後の方針・スケジュール
-3点: 振り返り・背景・課題・分析結果・戦略
-2点: 説明・詳細・補足・参考資料・事例紹介
-1点: その他・表紙・事務連絡
+5点: アジェンダ・目次・検討事項・主な論点・まとめ・結論・骨子・セクション見出し
+4点: 要点・ポイント・とりまとめ・提案・(案)・取組・重要課題・今後の方針・スケジュール・概要・基本方針
+3点: 振り返り・背景・課題・分析結果・戦略・個別施策の説明
+2点: 説明・詳細・補足・参考資料・事例紹介・各省庁の個別取組
+1点: その他・表紙・事務連絡・タイトルページ
 """
 
     prompt = PromptTemplate(
@@ -766,10 +820,25 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
 {scoring_criteria}
 
 ### 重要な判定ポイント
-- 「主な論点」「検討事項」「今回の論点」は5点（最重要）
-- 「第○回の振り返り」「前回の振り返り」は3点（中程度）
-- アジェンダや目次の中に複数項目が含まれる場合、実質的な論点部分を重視
-- 論点提示 > 振り返り内容の優先度で判定してください
+
+**最優先（5点）の判定基準：**
+- 「主な論点」「検討事項」「今回の論点」「まとめ」「結論」
+- セクション見出し（（1）、（2）、（3）等の章立て）
+- 文書全体の骨子・アジェンダ・目次
+
+**高優先（4点）の判定基準：**
+- 「概要」「基本方針」「ポイント」「要点」「重要課題」
+- 文書タイトルに直接関連する内容（例：「国土強靱化関係予算概算要求」の場合、「概算要求額と基本方針」「府省庁別概算要求の概要」など）
+- 「今後の方針」「スケジュール」「取組」
+
+**中優先（3点）の判定基準：**
+- 「振り返り」「背景」「課題」「分析結果」「戦略」
+- 個別施策の詳細説明
+
+**特別な考慮事項：**
+- 表紙・タイトルページは基本的に1点だが、文書タイトルとの関連性が高いページ（概要、基本方針等）は4点
+- 論点提示 > 振り返り内容 > 個別詳細の優先度で判定
+- 文書の性質（予算資料、政策資料等）に応じてタイトル関連ページの重要度を調整
 
 各ページについて、ページ番号、タイトル、スコア、理由を抽出してください。
 
@@ -840,7 +909,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         except Exception as e:
             logger.warning(f"⚠️ スライド分析に失敗（ページ{start_page+1}-{end_page+1}）: {e}")
     
-    # ステップ3: 最高スコアのスライドを選択
+    # ステップ3: 最高スコアのスライドと文書タイトル関連スライドを選択
     if not all_slides:
         # スライドが取得できない場合は全文を使用
         merged_content = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
@@ -849,23 +918,54 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
 
         logger.info(f"すべてのスライドを使って要約します")
     else:
-        # スコアでソートし、最高スコアのスライドのみを選択
+        # スコアでソートし、最高スコアのスライドを選択
         sorted_slides = sorted(all_slides, key=lambda x: x.score, reverse=True)
         max_score = sorted_slides[0].score
         top_slides = [slide for slide in sorted_slides if slide.score == max_score]
 
-        logger.info(f"以下のスライドを選択して要約します: {', '.join([str(slide.page) for slide in top_slides])}")
+        # 文書タイトルに関連する重要なスライドも追加選択（4点以上で文書タイトルと関連性が高いもの）
+        # 基本的なキーワードリスト
+        basic_keywords = ["概要", "基本方針", "ポイント", "要求", "予算", "全体", "総額", "方針", "要点", "まとめ"]
+        
+        # 文書タイトルから特定のキーワードを抽出
+        title_lower = title.lower()
+        title_keywords = []
+        if "予算" in title_lower:
+            title_keywords.extend(["概算要求", "要求額", "府省庁別", "要求"])
+        if "国土強靱化" in title_lower:
+            title_keywords.extend(["国土強靱化", "防災", "強靱化"])
+        if "施策" in title_lower or "政策" in title_lower:
+            title_keywords.extend(["施策", "政策", "取組", "対策"])
+        
+        # 全キーワードを結合
+        all_keywords = basic_keywords + title_keywords
+        title_related_slides = []
+        
+        for slide in sorted_slides:
+            if slide.score >= 4 and slide not in top_slides:
+                # タイトルとの関連性をチェック
+                slide_title_lower = slide.title.lower()
+                if any(keyword in slide_title_lower for keyword in all_keywords):
+                    title_related_slides.append(slide)
+        
+        # 最高スコアスライドと文書タイトル関連スライドを結合
+        all_selected_slides = top_slides + title_related_slides[:2]  # 文書タイトル関連は最大2つまで
+        
+        # ページ番号順にソート
+        all_selected_slides = sorted(all_selected_slides, key=lambda x: x.page)
 
-        # 最高スコアのスライドのテキストを取得
+        logger.info(f"以下のスライドを選択して要約します: {', '.join([str(slide.page) for slide in all_selected_slides])}")
+
+        # 選択されたスライドのテキストを取得
         selected_texts = []
-        for slide in top_slides:
+        for slide in all_selected_slides:
             page_idx = slide.page - 1  # 1ベースから0ベースに変換
             if 0 <= page_idx < len(texts):
                 selected_texts.append(f"--- ページ {slide.page} ({slide.title}) ---\n{texts[page_idx]}")
         
         merged_content = "\n\n".join(selected_texts)
-        page_info = f"最高スコア{max_score}点のスライド{len(top_slides)}枚（総{total_pages}ページ中）"
-        selected_slide_info = f"選択されたスライド: " + ", ".join([f"ページ{s.page}({s.title})" for s in top_slides])
+        page_info = f"最高スコア{max_score}点+文書関連スライド計{len(all_selected_slides)}枚（総{total_pages}ページ中）"
+        selected_slide_info = f"選択されたスライド: " + ", ".join([f"ページ{s.page}({s.title})" for s in all_selected_slides])
     
     # ステップ4: 要約作成
     powerpoint_summary_prompt = PromptTemplate(
