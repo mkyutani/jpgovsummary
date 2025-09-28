@@ -77,25 +77,7 @@ def main_content_extractor(state: State) -> dict:
         if url:
             try:
                 # HTMLを再取得してlxmlで正規化
-                import requests
-                from io import BytesIO
-                from markitdown import MarkItDown
-                from lxml import etree
-                
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-                response = requests.get(url, headers=headers, timeout=30, verify=True)
-                response.raise_for_status()
-                
-                # lxmlでHTMLを正規化
-                doc = html.fromstring(response.content)
-                normalized_html = etree.tostring(doc, encoding='unicode', method='html')
-                
-                # 正規化されたHTMLをMarkItDownで変換
-                html_bytes = normalized_html.encode('utf-8')
-                html_stream = BytesIO(html_bytes)
-                markdown = MarkItDown().convert(html_stream, file_extension='.html')
+                markdown_content = load_html_as_markdown(url)
                 
                 logger.info("🔧 HTMLを正規化して再変換しました")
                 
@@ -103,7 +85,7 @@ def main_content_extractor(state: State) -> dict:
                 fixed_state = state.copy()
                 fixed_state["messages"] = [
                     HumanMessage(content=f'会議のURLは"{url}"です。'),
-                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown.text_content}"),
+                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{markdown_content}"),
                 ]
                 
                 fixed_result = chain.invoke(fixed_state, Config().get())
