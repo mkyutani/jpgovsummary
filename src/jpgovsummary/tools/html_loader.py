@@ -1,5 +1,6 @@
 import requests
 import re
+import chardet
 from io import BytesIO
 from typing import List, Dict
 from langchain_core.tools import tool
@@ -139,19 +140,161 @@ class CustomMarkdownSerializer(MarkdownDocSerializer):
         return result
 
 
-def _normalize_and_convert_html(html_content: str | bytes) -> str:
+def _detect_encoding(content: bytes, headers: dict = None) -> str:
+    """
+    Detect encoding from HTTP headers, HTML meta tags, or using chardet.
+    
+    Args:
+        content: Raw bytes content
+        headers: HTTP response headers
+        
+    Returns:
+        str: detected encoding
+    """
+    # 1. Check HTTP Content-Type header
+    if headers:
+        content_type = headers.get('content-type', '').lower()
+        if 'charset=' in content_type:
+            charset = content_type.split('charset=')[1].split(';')[0].strip()
+            logger.info(f"Encoding detected from HTTP header: {charset}")
+            return charset
+    
+    # 2. Check HTML meta tags
+    try:
+        # Try to decode with common encodings to find meta tags
+        for try_encoding in ['utf-8', 'shift_jis', 'cp932', 'euc-jp', 'iso-2022-jp']:
+            try:
+                html_text = content.decode(try_encoding)
+                # Look for charset in meta tags
+                charset_match = re.search(r'<meta[^>]+charset[="\s]+([^">\s]+)', html_text, re.IGNORECASE)
+                if charset_match:
+                    detected_charset = charset_match.group(1).lower()
+                    logger.info(f"Encoding detected from HTML meta tag: {detected_charset}")
+                    return detected_charset
+                break
+            except UnicodeDecodeError:
+                continue
+    except Exception:
+        pass
+    
+    # 3. Use chardet as fallback
+    detection = chardet.detect(content)
+    if detection and detection['encoding']:
+        logger.info(f"Encoding detected by chardet: {detection['encoding']} (confidence: {detection['confidence']})")
+        return detection['encoding']
+    
+    # Default fallback
+    logger.warning("Could not detect encoding, defaulting to utf-8")
+    return 'utf-8'
+
+
+def _decode_content(content: bytes, headers: dict = None) -> str:
+    """
+    Decode bytes content to string with proper encoding detection.
+    
+    Args:
+        content: Raw bytes content
+        headers: HTTP response headers
+        
+    Returns:
+        str: decoded string content
+    """
+    detected_encoding = _detect_encoding(content, headers)
+    
+    # Try detected encoding first
+    try:
+        return content.decode(detected_encoding)
+    except UnicodeDecodeError:
+        logger.warning(f"Failed to decode with detected encoding {detected_encoding}")
+    
+    # Try common Japanese encodings
+    for encoding in ['shift_jis', 'cp932', 'euc-jp', 'iso-2022-jp', 'utf-8']:
+        try:
+            decoded = content.decode(encoding)
+            logger.info(f"Successfully decoded with {encoding}")
+            return decoded
+        except UnicodeDecodeError:
+            continue
+    
+    # Last resort: decode with errors='replace'
+    logger.error("Could not decode with any encoding, using utf-8 with error replacement")
+    return content.decode('utf-8', errors='replace')
+
+
+def _clean_html_for_lxml(html_content: str) -> str:
+    """
+    Clean HTML content to make it compatible with lxml.
+    
+    Args:
+        html_content: HTML content as string
+        
+    Returns:
+        str: cleaned HTML content
+    """
+    # Remove XML declaration if present
+    html_content = re.sub(r'<\?xml[^>]*\?>', '', html_content, flags=re.IGNORECASE)
+    
+    # Remove encoding declaration from meta tags that might conflict
+    html_content = re.sub(
+        r'<meta\s+[^>]*http-equiv\s*=\s*["\']content-type["\'][^>]*>', 
+        '', 
+        html_content, 
+        flags=re.IGNORECASE
+    )
+    
+    # Remove standalone encoding meta tags that might cause issues
+    html_content = re.sub(
+        r'<meta\s+charset\s*=\s*["\'][^"\']*["\'][^>]*>', 
+        '', 
+        html_content, 
+        flags=re.IGNORECASE
+    )
+    
+    return html_content.strip()
+
+
+def _normalize_and_convert_html(html_content: str | bytes, headers: dict = None) -> str:
     """
     Normalize HTML with lxml and convert to markdown using Docling.
     
     Args:
         html_content: HTML content as string or bytes
+        headers: HTTP response headers for encoding detection
         
     Returns:
         str: markdown content
     """
+    # Convert bytes to string if needed
+    if isinstance(html_content, bytes):
+        html_content = _decode_content(html_content, headers)
+    
+    # Clean HTML content for lxml compatibility
+    cleaned_html = _clean_html_for_lxml(html_content)
+    
     # lxmlでHTMLを正規化
-    doc = html.fromstring(html_content)
-    normalized_html = etree.tostring(doc, encoding='unicode', method='html')
+    try:
+        doc = html.fromstring(cleaned_html)
+        normalized_html = etree.tostring(doc, encoding='unicode', method='html')
+    except Exception as e:
+        logger.warning(f"lxml parsing failed: {e}, trying with fragment parsing")
+        # Try parsing as fragment if full document parsing fails
+        try:
+            doc = html.fragment_fromstring(cleaned_html)
+            if hasattr(doc, 'tag'):
+                # Single element fragment
+                normalized_html = etree.tostring(doc, encoding='unicode', method='html')
+            else:
+                # Multiple fragments, wrap in div
+                wrapper = html.Element('div')
+                if isinstance(doc, list):
+                    for fragment in doc:
+                        wrapper.append(fragment)
+                else:
+                    wrapper.append(doc)
+                normalized_html = etree.tostring(wrapper, encoding='unicode', method='html')
+        except Exception as e2:
+            logger.error(f"Fragment parsing also failed: {e2}, using original content")
+            normalized_html = cleaned_html
     
     # Use Docling with custom serializer for hyperlink support
     converter = DocumentConverter()
@@ -170,6 +313,7 @@ def load_html_as_markdown(url: str) -> str:
     
     This function handles HTML normalization using lxml before converting
     to markdown using Docling with hyperlink preservation in table cells.
+    It automatically detects and handles various encodings including Shift_JIS.
 
     Args:
         url (str): URL of the page with ending .html or local file path
@@ -183,8 +327,8 @@ def load_html_as_markdown(url: str) -> str:
         validate_local_file(file_path)
         logger.info(f"{file_path} (HTML)を読み込みます")
 
-        # Read local HTML file content
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Read local HTML file as bytes for encoding detection
+        with open(file_path, 'rb') as f:
             html_content = f.read()
         
         return _normalize_and_convert_html(html_content)
@@ -197,4 +341,4 @@ def load_html_as_markdown(url: str) -> str:
         response = requests.get(url, headers=headers, timeout=30, verify=True)
         response.raise_for_status()
         
-        return _normalize_and_convert_html(response.content)
+        return _normalize_and_convert_html(response.content, response.headers)
