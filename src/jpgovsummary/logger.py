@@ -95,9 +95,21 @@ class LSColorFormatter(logging.Formatter):
         
         # 進行状況表示用の特別な絵文字（緑色・改行付き）
         self.progress_emoji = '🟢'
+        
+        # jpgovsummaryメッセージの絵文字リスト
+        self.jpgovsummary_emojis = ['✅', '🔍', '📄', '🔗', '🔄', '💬']
     
     def format(self, record):
-        msg = super().format(record)
+        # 外部ライブラリのログの場合は、時刻なしでレベル付きで表示
+        if record.name != "jpgovsummary":
+            # 外部ライブラリのメッセージは "WARNING(docling): メッセージ" 形式
+            if record.levelno >= logging.WARNING:
+                msg = f"{record.levelname}({record.name}): {record.getMessage()}"
+            else:
+                msg = record.getMessage()
+        else:
+            # jpgovsummaryのメッセージは従来通り
+            msg = super().format(record)
         
         # ログレベルベースの色選択
         color_key = self.level_mapping.get(record.levelno, 'fi')
@@ -108,10 +120,11 @@ class LSColorFormatter(logging.Formatter):
             # 色はデフォルト（fi）のまま、薄いグレーにしない
         else:
             prefix = ""
-            # 絵文字がない通常のINFOメッセージのみ薄いグレーに
-            has_emoji = any(emoji in msg for emoji in ['✅', '🔍', '📄', '🔗', '🔄', '💬'])
-            if not has_emoji and record.levelno == logging.INFO:
-                color_key = '*~'  # バックアップファイル色（薄いグレー）
+            # jpgovsummaryの絵文字がない通常のINFOメッセージのみ薄いグレーに
+            if record.name == "jpgovsummary":
+                has_emoji = any(emoji in msg for emoji in self.jpgovsummary_emojis)
+                if not has_emoji and record.levelno == logging.INFO:
+                    color_key = '*~'  # バックアップファイル色（薄いグレー）
         
         # 色コードを適用
         color_code = self.colors.get(color_key, '')
@@ -132,14 +145,43 @@ def set_batch_mode(batch: bool = False):
     """ログ出力形式をbatchモードの有無で切り替える"""
     if batch:
         handler.setFormatter(batch_formatter)
+        # バッチモードでは外部ライブラリのINFOも出力
+        configure_external_loggers(batch_mode=True)
     else:
         handler.setFormatter(LSColorFormatter("%(message)s"))
+        # interactiveモードでは外部ライブラリのWARNING以上のみ
+        configure_external_loggers(batch_mode=False)
 
 
-# ロガーの設定
-logger = logging.getLogger("jpgovsummary")
-logger.setLevel(logging.INFO)
-logger.propagate = False
+# 外部ライブラリのロガーレベルを設定
+def configure_external_loggers(batch_mode: bool = False):
+    """
+    外部ライブラリのログレベルを設定
+    
+    Args:
+        batch_mode: バッチモードの場合True（INFOも出力）、
+                   interactiveモードの場合False（WARNING以上のみ）
+    """
+    external_loggers = [
+        'docling',
+        'docling.document_converter', 
+        'docling.datamodel',
+        'docling_core',
+        'requests',
+        'urllib3',
+        'urllib3.connectionpool',
+        'httpx',
+        'openai',
+        'openai._base_client',
+        'httpcore',
+    ]
+    
+    # バッチモードではINFO、interactiveモードではWARNING以上
+    log_level = logging.INFO if batch_mode else logging.WARNING
+    
+    for logger_name in external_loggers:
+        external_logger = logging.getLogger(logger_name)
+        external_logger.setLevel(log_level)
 
 # ハンドラーの設定
 handler = logging.StreamHandler(sys.stderr)
@@ -151,5 +193,19 @@ batch_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(
 # デフォルトはLS_COLORS対応のinteractiveモード
 handler.setFormatter(LSColorFormatter("%(message)s"))
 
-# ハンドラーの追加
-logger.addHandler(handler)
+# ルートロガーにハンドラーを追加（全てのライブラリのログを処理）
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+# 既存のハンドラーがあればクリア
+for h in root_logger.handlers[:]:
+    root_logger.removeHandler(h)
+root_logger.addHandler(handler)
+
+# jpgovsummaryロガーの設定
+logger = logging.getLogger("jpgovsummary")
+logger.setLevel(logging.INFO)
+# propagateはTrueにしてルートロガーに送る
+logger.propagate = True
+
+# 初期設定（interactiveモード）
+configure_external_loggers(batch_mode=False)
