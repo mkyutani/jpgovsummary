@@ -181,7 +181,7 @@ def load_html_as_markdown(url: str) -> str:
         # Handle local file
         file_path = get_local_file_path(url)
         validate_local_file(file_path)
-        logger.info(f"🟢 {file_path} (HTML)を読み込みます")
+        logger.info(f"{file_path} (HTML)を読み込みます")
 
         # Read local HTML file content
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -190,7 +190,7 @@ def load_html_as_markdown(url: str) -> str:
         return _normalize_and_convert_html(html_content)
     else:
         # Handle remote URL
-        logger.info(f"🟢 {url} (HTML)を読み込みます")
+        logger.info(f"{url} (HTML)を読み込みます")
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }

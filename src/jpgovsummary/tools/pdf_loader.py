@@ -24,7 +24,7 @@ def load_pdf_as_text(url: str) -> list[str]:
             # Handle local file
             file_path = get_local_file_path(url)
             validate_local_file(file_path)
-            logger.info(f"🟢 {file_path} (PDF)を読み込みます")
+            logger.info(f"{file_path} (PDF)を読み込みます")
 
             # Read local PDF file
             with open(file_path, 'rb') as f:
@@ -38,7 +38,7 @@ def load_pdf_as_text(url: str) -> list[str]:
         else:
             # Handle remote URL (existing logic)
             # PDFファイルをダウンロード
-            logger.info(f"🟢 {url} (PDF)を読み込みます")
+            logger.info(f"{url} (PDF)を読み込みます")
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             }
