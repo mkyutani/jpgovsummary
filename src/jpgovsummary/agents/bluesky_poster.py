@@ -120,170 +120,138 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
     """
     MultiServerMCPClientを使用してLangGraph Agent経由でBlueskyに投稿
     """
+    success = False
+    result_data = None
+    error_msg = None
+    
     try:
-        
         # 環境変数からSSKY_USERを取得
         ssky_user = os.getenv("SSKY_USER")
         if not ssky_user:
             error_msg = "SSKY_USER environment variable not set. Format: 'USER:PASSWORD'"
             logger.error(f"❌ {error_msg}")
-            return {
-                "success": False,
-                "content": content,
-                "result": None,
-                "error": error_msg
-            }
-        
-        # MCPクライアントを初期化
-        client = MultiServerMCPClient({
-            "ssky": {
-                "command": "docker",
-                "args": [
-                    "run",
-                    "-i",
-                    "--rm",
-                    "-e",
-                    f"SSKY_USER={ssky_user}",
-                    "ghcr.io/simpleskyclient/ssky-mcp"
-                ],
-                "transport": "stdio",
-            }
-        })
-        
-        # MCPツールを取得
-        try:
-            tools = await client.get_tools()
-        except Exception as e:
-            logger.error(f"❌ MCPツール取得に失敗しました: {str(e)}")
-            return {
-                "success": False,
-                "content": content,
-                "result": None,
-                "error": f"Failed to get MCP tools: {str(e)}"
-            }
-        
-        # LangGraphエージェントを作成（実際にツールを実行する）
-        llm = Model().llm()
-        agent = create_react_agent(llm, tools)
-        
-        # メッセージを作成して投稿を依頼（JSONフォーマットを指定）
-        message = f"Please post the following content to Bluesky using output_format='json': '{content}'"
-        
-        try:
-            # エージェントを実行（ツールが実際に実行される）
-            result = await agent.ainvoke({
-                "messages": [HumanMessage(content=message)]
+        else:
+            # MCPクライアントを初期化
+            client = MultiServerMCPClient({
+                "ssky": {
+                    "command": "docker",
+                    "args": [
+                        "run",
+                        "-i",
+                        "--rm",
+                        "-e",
+                        f"SSKY_USER={ssky_user}",
+                        "ghcr.io/simpleskyclient/ssky-mcp"
+                    ],
+                    "transport": "stdio",
+                }
             })
             
-            # 結果を解析
-            if "messages" in result:
-                last_message = result["messages"][-1]
-                response_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
+            # MCPツールを取得
+            try:
+                tools = await client.get_tools()
                 
-                # ツール呼び出しをチェック（messagesからも確認）
-                actual_tool_result = None
-                tool_used = None
+                # LangGraphエージェントを作成（実際にツールを実行する）
+                llm = Model().llm()
+                agent = create_react_agent(llm, tools)
                 
-                # messagesからツール呼び出しを検出
-                for msg in result["messages"]:
-                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                        for tool_call in msg.tool_calls:
-                            if tool_call.get('name') == 'ssky_post':
-                                tool_used = tool_call['name']
-                                break
-                    if hasattr(msg, 'content') and isinstance(msg.content, str) and 'ssky_post' in msg.content:
-                        # ToolMessageからの結果を取得
-                        if hasattr(msg, 'name') and msg.name == 'ssky_post':
-                            actual_tool_result = msg.content
+                # メッセージを作成して投稿を依頼（JSONフォーマットを指定）
+                message = f"Please post the following content to Bluesky using output_format='json': '{content}'"
                 
-                # intermediate_stepsからも確認
-                if "intermediate_steps" in result and result["intermediate_steps"]:
-                    for step in result["intermediate_steps"]:
-                        if isinstance(step, tuple) and len(step) == 2:
-                            action, observation = step
-                            if hasattr(action, 'tool') and action.tool == "ssky_post":
-                                actual_tool_result = observation
-                                tool_used = action.tool
-                                break
-                
-                if tool_used:
-                    logger.info(f"{tool_used}を使用します")
-                
-                # 実際のツール結果がある場合はそれを優先、なければエージェントレスポンスを使用
-                result_to_check = actual_tool_result if actual_tool_result is not None else response_content
-                
-                # エラーパターンの判定（シンプル版：HTTPステータスコードベース）
-                result_str = str(result_to_check)
-                
-                # "Error: 4xx" または "Error: 5xx" パターンをチェック
-                error_pattern = re.compile(r'Error:\s*[45]\d\d')
-                is_error = bool(error_pattern.search(result_str)) or "Command timed out" in result_str
-                
-                if is_error:
-                    return {
-                        "success": False,
-                        "content": content,
-                        "result": None,
-                        "error": str(result_to_check)
-                    }
-                else:
-                    # 成功判定 - 新しいssky mcp-serverのJSONフォーマットに対応
-                    result_str = str(result_to_check)
+                try:
+                    # エージェントを実行（ツールが実際に実行される）
+                    result = await agent.ainvoke({
+                        "messages": [HumanMessage(content=message)]
+                    })
                     
-                    # 新しい成功判定ロジックを使用
-                    parsed_result = _parse_ssky_response(result_str)
-                    
-                    if parsed_result["success"]:
-                        return {
-                            "success": True,
-                            "content": content,
-                            "result": result_str,
-                            "error": None
-                        }
-                    else:
-                        # ツールが実行されていて、エラーでない場合は成功とみなす（フォールバック）
-                        if actual_tool_result is not None:
-                            logger.info("✅ ツール実行に成功しました")
-                            return {
-                                "success": True,
-                                "content": content,
-                                "result": result_str,
-                                "error": None
-                            }
+                    # 結果を解析
+                    if "messages" in result:
+                        last_message = result["messages"][-1]
+                        response_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
                         
-                        # 曖昧な場合
-                        logger.warning(f"⚠️ 結果が曖昧で成功/失敗を判定できません: {result_str}")
-                        return {
-                            "success": False,
-                            "content": content,
-                            "result": None,
-                            "error": parsed_result["message"]
-                        }
-            else:
-                return {
-                    "success": False,
-                    "content": content,
-                    "result": None,
-                    "error": "No response from agent"
-                }
+                        # ツール呼び出しをチェック（messagesからも確認）
+                        actual_tool_result = None
+                        tool_used = None
+                        
+                        # messagesからツール呼び出しを検出
+                        for msg in result["messages"]:
+                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                for tool_call in msg.tool_calls:
+                                    if tool_call.get('name') == 'ssky_post':
+                                        tool_used = tool_call['name']
+                                        break
+                            if hasattr(msg, 'content') and isinstance(msg.content, str) and 'ssky_post' in msg.content:
+                                # ToolMessageからの結果を取得
+                                if hasattr(msg, 'name') and msg.name == 'ssky_post':
+                                    actual_tool_result = msg.content
+                        
+                        # intermediate_stepsからも確認
+                        if "intermediate_steps" in result and result["intermediate_steps"]:
+                            for step in result["intermediate_steps"]:
+                                if isinstance(step, tuple) and len(step) == 2:
+                                    action, observation = step
+                                    if hasattr(action, 'tool') and action.tool == "ssky_post":
+                                        actual_tool_result = observation
+                                        tool_used = action.tool
+                                        break
+                        
+                        if tool_used:
+                            logger.info(f"{tool_used}を使用します")
+                        
+                        # 実際のツール結果がある場合はそれを優先、なければエージェントレスポンスを使用
+                        result_to_check = actual_tool_result if actual_tool_result is not None else response_content
+                        
+                        # エラーパターンの判定（シンプル版：HTTPステータスコードベース）
+                        result_str = str(result_to_check)
+                        
+                        # "Error: 4xx" または "Error: 5xx" パターンをチェック
+                        error_pattern = re.compile(r'Error:\s*[45]\d\d')
+                        is_error = bool(error_pattern.search(result_str)) or "Command timed out" in result_str
+                        
+                        if is_error:
+                            error_msg = str(result_to_check)
+                        else:
+                            # 成功判定 - 新しいssky mcp-serverのJSONフォーマットに対応
+                            result_str = str(result_to_check)
+                            
+                            # 新しい成功判定ロジックを使用
+                            parsed_result = _parse_ssky_response(result_str)
+                            
+                            if parsed_result["success"]:
+                                success = True
+                                result_data = result_str
+                            else:
+                                # ツールが実行されていて、エラーでない場合は成功とみなす（フォールバック）
+                                if actual_tool_result is not None:
+                                    logger.info("✅ ツール実行に成功しました")
+                                    success = True
+                                    result_data = result_str
+                                else:
+                                    # 曖昧な場合
+                                    logger.warning(f"⚠️ 結果が曖昧で成功/失敗を判定できません: {result_str}")
+                                    error_msg = parsed_result["message"]
+                    else:
+                        error_msg = "No response from agent"
+                        
+                except Exception as e:
+                    logger.error(f"❌ エージェント実行に失敗: {str(e)}")
+                    error_msg = f"Failed to execute agent: {str(e)}"
                     
-        except Exception as e:
-            logger.error(f"❌ エージェント実行に失敗: {str(e)}")
-            return {
-                "success": False,
-                "content": content,
-                "result": None,
-                "error": f"Failed to execute agent: {str(e)}"
-            }
-        
+            except Exception as e:
+                logger.error(f"❌ MCPツール取得に失敗しました: {str(e)}")
+                error_msg = f"Failed to get MCP tools: {str(e)}"
+                
     except Exception as e:
         logger.error(f"❌ MCP経由Bluesky投稿に失敗: {str(e)}", exc_info=True)
-        return {
-            "success": False,
-            "content": content,
-            "result": None,
-            "error": str(e)
-        }
+        error_msg = str(e)
+    
+    # 単一のreturn文
+    return {
+        "success": success,
+        "content": content,
+        "result": result_data,
+        "error": error_msg
+    }
 
 
 def _format_bluesky_content(summary: str, url: str) -> str:
