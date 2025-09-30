@@ -106,7 +106,7 @@ def summary_integrator(state: State) -> State:
 
     # URLの長さに基づいて動的に文字数制限を計算
     url_length = len(url)
-    max_chars = max(50, 500 - url_length - 1)  # 最低50文字は確保
+    max_chars = max(200, 1000 - url_length - 1)  # 最低200文字は確保
 
     if not target_report_summaries:
         final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"
@@ -181,6 +181,11 @@ def summary_integrator(state: State) -> State:
 - {subject_type}が主語となる表現を使用
 - 実質的内容がない場合は空文字列を返す
 - より適切な日本語の文章に推敲する
+- **以下の情報は要約に含めない：**
+  - 開会・閉会・進行に関する情報（「開会した」「閉会した」「進行した」等）
+  - 開催日時・時間に関する情報（「○月○日」「午前」「午後」「○時」等）
+  - 開催場所・会場に関する情報（「○○省」「○○ビル」「オンライン」「ハイブリッド」等）
+  - 会議の形式・構成に関する情報（「書面開催」「対面開催」「Web会議」等）
 """.format(subject_type=subject_type, subject_expression=subject_expression),
         )
 
