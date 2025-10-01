@@ -88,6 +88,7 @@ def report_selector(state: State) -> State:
         logger.info("関連資料が選択されませんでした")
         reports = []
         target_reports = []
+        highest_score = 0  # Set default value when no reports found
     else:
         reports = sorted(reports, key=lambda x: x["score"], reverse=True)
         for report in reports:
