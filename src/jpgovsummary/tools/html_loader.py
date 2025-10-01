@@ -20,18 +20,23 @@ class HyperlinkExtractor:
     @staticmethod
     def extract_hyperlinks_from_html_cell(html_content: str) -> tuple[str, List[Dict]]:
         """Extract hyperlinks from HTML cell content"""
-        link_pattern = r'<a\s+href=["\']([^"\']+)["\'][^>]*>([^<]+)</a>'
-        matches = list(re.finditer(link_pattern, html_content))
-        
         # Get plain text
         plain_text = re.sub(r'<[^>]+>', '', html_content)
         
         hyperlinks = []
         offset = 0
         
-        for match in matches:
-            url = match.group(1)
-            link_text = match.group(2)
+        # Extract the full anchor tags with their content
+        full_link_pattern = r'<a[^>]*href=(?:"([^"]*)"|\'([^\']*)\')[^>]*>(.*?)</a>'
+        full_matches = list(re.finditer(full_link_pattern, html_content, re.DOTALL))
+        
+        for match in full_matches:
+            # URL is in group 1 (double quotes) or group 2 (single quotes)
+            url = match.group(1) if match.group(1) else match.group(2)
+            link_content = match.group(3)
+            
+            # Extract text content, removing any HTML tags (like <img>)
+            link_text = re.sub(r'<[^>]+>', '', link_content).strip()
             
             # Find position in plain text
             start_pos = plain_text.find(link_text, offset)
@@ -107,20 +112,31 @@ class CustomMarkdownSerializer(MarkdownDocSerializer):
                     
                     for part in parts:
                         cell_content = part.strip()
-                        if cell_content and cell_content in self.cell_hyperlinks:
+                        # Normalize whitespace for comparison
+                        normalized_cell_content = re.sub(r'\s+', ' ', cell_content)
+                        
+                        # Find matching cell hyperlinks by normalized content
+                        matching_hyperlinks = None
+                        for cell_key, hyperlinks in self.cell_hyperlinks.items():
+                            normalized_key = re.sub(r'\s+', ' ', cell_key.strip())
+                            if normalized_cell_content == normalized_key:
+                                matching_hyperlinks = hyperlinks
+                                break
+                        
+                        if cell_content and matching_hyperlinks:
                             # Process this cell's hyperlinks
-                            hyperlinks = self.cell_hyperlinks[cell_content]
+                            hyperlinks = matching_hyperlinks
                             processed_cell = cell_content
                             
-                            for link in sorted(hyperlinks, key=lambda x: x.get('start', 0), reverse=True):
-                                start = link.get('start', 0)
-                                end = link.get('end', len(link.get('text', '')))
+                            # Process hyperlinks by replacing text with markdown links
+                            for link in hyperlinks:
                                 url = link.get('url', '')
                                 link_text = link.get('text', '')
                                 
-                                if start < len(processed_cell) and end <= len(processed_cell):
+                                # Replace the link text with markdown format
+                                if link_text in processed_cell:
                                     formatted_link = f"[{link_text}]({url})"
-                                    processed_cell = processed_cell[:start] + formatted_link + processed_cell[end:]
+                                    processed_cell = processed_cell.replace(link_text, formatted_link, 1)
                             
                             # Preserve spacing
                             processed_parts.append(f" {processed_cell} " if part.strip() else part)
