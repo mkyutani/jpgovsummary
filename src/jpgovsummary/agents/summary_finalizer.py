@@ -287,13 +287,9 @@ def _generate_shortened_summary_with_quality_check(llm, current_summary: str, ov
     targets = _calculate_compression_stages(len(current_summary), final_target)
     
     if len(targets) > 1:
-        # 段階的圧縮の全体文字数表示用に変換
-        targets_with_url = [t + url_length + 1 for t in targets]
-        logger.info(f"🔄 段階的圧縮を適用: {' → '.join(map(str, targets_with_url))}")
         return _progressive_compression_with_quality_check(llm, current_summary, overview, summaries, targets, is_meeting_page)
     else:
         # 圧縮が不要または軽微な場合
-        logger.info("📝 直接圧縮を適用")
         initial_summary = _generate_initial_shortened_summary(llm, current_summary, overview, summaries, url, is_meeting_page, final_target)
         quality_result = _evaluate_and_improve_summary(llm, initial_summary, current_summary, overview, summaries, final_target, is_meeting_page)
         return quality_result.improved_summary if quality_result.needs_improvement else initial_summary
@@ -324,20 +320,22 @@ def _progressive_compression_with_quality_check(llm, current_summary: str, overv
     
     working_summary = current_summary
     
-    # 各段階で圧縮を実行（表示は省略、内部処理のみ）
+    # 各段階で圧縮を実行
     for i, target in enumerate(targets[:-1], 1):  # 最後以外の段階
         stage_name = f"第{i}段階"
+        logger.info(f"{stage_name}要約を作成中（目標: {target}文字）")
         working_summary = _generate_gradual_summary(llm, working_summary, overview, summaries, target, is_meeting_page, stage_name)
     
     # 最終段階 + 品質評価
     final_target = targets[-1]
+    logger.info(f"最終段階要約を作成中（目標: {final_target}文字）")
     final_summary = _generate_gradual_summary(llm, working_summary, overview, summaries, final_target, is_meeting_page, "最終段階")
     
     # 最終品質評価
     quality_result = _evaluate_and_improve_summary(llm, final_summary, current_summary, overview, summaries, final_target, is_meeting_page)
     
     if quality_result.needs_improvement:
-        logger.info(f"📄 品質改善後の最終要約: {quality_result.improved_summary}")
+        logger.info(f"品質改善後の最終要約: {quality_result.improved_summary}")
     
     return quality_result.improved_summary if quality_result.needs_improvement else final_summary
 
@@ -531,6 +529,7 @@ def _evaluate_and_improve_summary(llm, summary: str, original_summary: str, over
 改善要否: [要/不要] (総合4点以下なら「要」、5点なら「不要」)
 
 ## 最終要約 ({max_chars}字以内)
+**重要**: 改善版を作成する場合は、会議名・文書名の正式名称を必ず完全に保持してください。省略や短縮は絶対に行わないでください。
 [改善要の場合は改善版、不要の場合は元要約をそのまま記載]
         """)
     
@@ -571,11 +570,11 @@ def _evaluate_and_improve_summary(llm, summary: str, original_summary: str, over
         final_summary_match = re.search(r'## 最終要約.*?\n(.+)', content, re.DOTALL)
         improved_summary = final_summary_match.group(1).strip() if final_summary_match else summary
         
-        logger.info(f"📊 品質評価結果: 技術詳細{technical_detail}/5, 実務価値{practical_value}/5, 具体性{concreteness}/5, 有用性{reader_utility}/5, 総合{overall_score}/5")
+        logger.info(f"品質評価結果: 技術詳細{technical_detail}/5, 実務価値{practical_value}/5, 具体性{concreteness}/5, 有用性{reader_utility}/5, 総合{overall_score}/5")
         if needs_improvement:
-            logger.info("🔄 品質改善が必要と判定されました")
+            logger.info(f"品質改善が必要と判定されました（総合{overall_score}/5点 ≤ 4点のため）")
         else:
-            logger.info("✅ 品質は十分と判定されました")
+            logger.info(f"品質は十分と判定されました（総合{overall_score}/5点 > 4点のため）")
         
         return QualityEvaluation(
             technical_detail=technical_detail,
@@ -666,17 +665,13 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
     has_improvement_request = improvement_request
     
     if has_direct_edit and has_improvement_request:
-        # Both direct edit and improvement request: first apply direct edit, then improvement
-        logger.info(f"✏️ 直接編集を検出、編集された要約に改善を適用")
-        logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
+        logger.info(f"{improvement_request.replace('\n', ' ')}")
         updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url, is_meeting_page)
     elif has_direct_edit:
-        # Only direct edit
-        logger.info(f"✏️ 直接編集を検出: 編集された要約を使用")
         updated_summary = edited_summary
     elif has_improvement_request:
         # Only improvement request
-        logger.info(f"🔄 {improvement_request.replace('\n', ' ')}")
+        logger.info(f"{improvement_request.replace('\n', ' ')}")
         updated_summary = _generate_improved_summary(llm, current_summary, improvement_request, overview, summaries, url, is_meeting_page)
     else:
         # No changes made
