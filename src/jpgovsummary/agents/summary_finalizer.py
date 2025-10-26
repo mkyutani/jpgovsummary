@@ -185,7 +185,8 @@ def summary_finalizer(state: State) -> State:
     state["review_session"] = review_session
 
     # Display final confirmed summary
-    logger.info("✅ レビュー完了！")
+    total_chars = len(current_summary) + len(url) + 1
+    logger.info(f"✅ 最終調整終了{total_chars}文字({len(current_summary)}+{len(url)}+1)")
     _display_current_summary(current_summary, url=url)
 
     # Update messages with final reviewed summary
