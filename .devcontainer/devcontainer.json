@@ -1,0 +1,44 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/python
+{
+	"name": "jpgovwatcher",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/python:2-3.12-bullseye",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers-extra/features/poetry:2": {
+			"version": "latest"
+		}
+	},
+
+	// Load environment variables from .env.local file (if it exists)
+	// Create .env.local from .env.local.sample before first use
+	"initializeCommand": "bash -c 'if [ ! -f .env.local ]; then cp .env.local.sample .env.local; fi'",
+	"runArgs": ["--env-file", "${localWorkspaceFolder}/.env.local"],
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "poetry install && echo '\n# Auto-activate Poetry virtual environment for jpgovwatcher project\nif [ -d \"/workspaces/jpgovsummary/.venv\" ]; then\n    source /workspaces/jpgovsummary/.venv/bin/activate\nfi' >> ~/.bashrc",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"anthropic.claude-code"
+			],
+			"settings": {
+				"cSpell.words": [
+				]
+			}
+		}
+	}
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}
