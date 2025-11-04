@@ -12,6 +12,14 @@ from langgraph.prebuilt import create_react_agent
 from .. import Model, State, logger
 
 
+# Character limits for summaries
+MAX_CHARS_INTEGRATED_SUMMARY = 2000  # Maximum characters for integrated summary (summary + URL + newline)
+MAX_CHARS_BLUESKY_LONG = 1000  # Maximum characters for Bluesky posting (long format)
+MAX_CHARS_BLUESKY_SHORT = 1000  # Maximum characters for Bluesky posting (short format)
+MIN_CHARS_SUMMARY = 50  # Minimum characters to ensure for summary content
+MIN_CHARS_INTEGRATED = 200  # Minimum characters to ensure for integrated summary
+
+
 def bluesky_poster(state: State) -> State:
     """
     Human reviewerの後にBlueskyへの投稿を確認・実行するエージェント
@@ -42,10 +50,15 @@ def bluesky_poster(state: State) -> State:
                 if post_result.get("result"):
                     try:
                         result_data = json.loads(str(post_result["result"]))
+                        logger.debug(f"{json.dumps(result_data, ensure_ascii=False, indent=2)}")
                         if result_data.get("status") == "success" and "data" in result_data:
                             uri = result_data["data"].get("uri")
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logger.warning(f"{type(e).__name__}: {str(e)}")
+                        logger.warning(f"{post_result.get('result')}")
+                    except Exception as e:
+                        logger.warning(f"{type(e).__name__}: {str(e)}")
+                        logger.warning(f"{json.dumps(result_data, ensure_ascii=False, indent=2)}")
                 state["bluesky_post_completed"] = True
                 state["bluesky_post_content"] = post_content
                 state["bluesky_post_requested"] = True

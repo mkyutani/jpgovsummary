@@ -3,6 +3,7 @@ from langchain_core.prompts import PromptTemplate
 import re
 
 from .. import Model, State, logger
+from .bluesky_poster import MAX_CHARS_INTEGRATED_SUMMARY, MIN_CHARS_INTEGRATED
 
 
 def extract_context_from_messages(messages: list) -> dict:
@@ -106,7 +107,7 @@ def summary_integrator(state: State) -> State:
 
     # URLの長さに基づいて動的に文字数制限を計算
     url_length = len(url)
-    max_chars = max(200, 1000 - url_length - 1)  # 最低200文字は確保
+    max_chars = max(MIN_CHARS_INTEGRATED, MAX_CHARS_INTEGRATED_SUMMARY - url_length - 1)
 
     if not target_report_summaries:
         final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"

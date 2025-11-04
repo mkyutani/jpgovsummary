@@ -179,12 +179,20 @@ Before committing, ensure:
 
 The tool includes optional Bluesky posting functionality via the `bluesky_poster` agent.
 
+### Character Limits
+Character limits are defined as constants in [bluesky_poster.py](src/jpgovsummary/agents/bluesky_poster.py):
+- `MAX_CHARS_INTEGRATED_SUMMARY = 2000` - Maximum for integrated summary (summary + URL + newline)
+- `MAX_CHARS_BLUESKY_LONG = 1000` - Maximum for Bluesky posting
+- `MAX_CHARS_BLUESKY_SHORT = 1000` - Maximum for Bluesky posting (same as LONG)
+- `MIN_CHARS_SUMMARY = 50` - Minimum characters to ensure for summary content
+- `MIN_CHARS_INTEGRATED = 200` - Minimum characters to ensure for integrated summary
+
 ### Important Safety Rules
 When working with Bluesky posting code:
 - **Never post without user approval** - Always use dry run first in interactive mode
 - Check authentication status before operations
 - Never hardcode credentials - use `SSKY_USER` environment variable
-- Respect Bluesky's character limits (300 characters)
+- Respect Bluesky's character limits (defined in constants above)
 - Handle errors gracefully with clear messages
 
 ### Workflow

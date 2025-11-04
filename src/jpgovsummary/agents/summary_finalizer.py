@@ -5,6 +5,11 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import PromptTemplate
 
 from .. import Model, State, logger
+from .bluesky_poster import (
+    MAX_CHARS_BLUESKY_SHORT,
+    MAX_CHARS_BLUESKY_LONG,
+    MIN_CHARS_SUMMARY
+)
 
 
 class QualityEvaluation(NamedTuple):
@@ -66,9 +71,9 @@ def summary_finalizer(state: State) -> State:
 
             # Check character limit before approval
             total_chars = len(current_summary) + len(url) + 1
-            if total_chars > 300:
-                # Simple character limit logic: 500+ total chars -> 500 chars, otherwise -> 300 chars
-                target_total_chars = 500 if total_chars >= 500 else 300
+            if total_chars > MAX_CHARS_BLUESKY_SHORT:
+                # Simple character limit logic: shorten to 1000 chars
+                target_total_chars = MAX_CHARS_BLUESKY_SHORT
                 
                 logger.warning(f"⚠️ 要約が{total_chars}文字で長すぎるため{target_total_chars}文字以内に再生成します")
                 shortened_summary = _generate_shortened_summary(
@@ -212,7 +217,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
     
     # Calculate max characters based on URL length
     url_length = len(url)
-    max_chars = max(50, 300 - url_length - 1)
+    max_chars = max(MIN_CHARS_SUMMARY, MAX_CHARS_BLUESKY_SHORT - url_length - 1)
     
     # Handle improvement request
     # 会議 or 文書に応じて表現を変更

@@ -93,7 +93,7 @@ class State(TypedDict):
         description="The final integrated summary from all sources", default=None
     )
     summary_retry_count: int | None = Field(
-        description="The retry count for summary_integrator when final_summary exceeds 300 characters",
+        description="The retry count for summary_integrator when final_summary exceeds character limit",
         default=0,
     )
     # Human review fields
