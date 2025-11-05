@@ -51,8 +51,9 @@ def bluesky_poster(state: State) -> State:
                     try:
                         result_data = json.loads(str(post_result["result"]))
                         logger.debug(f"{json.dumps(result_data, ensure_ascii=False, indent=2)}")
-                        if result_data.get("status") == "success" and "data" in result_data:
-                            uri = result_data["data"].get("uri")
+                        # _parse_ssky_response内の_extract_uriヘルパーを再利用
+                        parsed_response = _parse_ssky_response(str(post_result["result"]))
+                        uri = parsed_response.get("uri", "None")
                     except (json.JSONDecodeError, KeyError) as e:
                         logger.warning(f"{type(e).__name__}: {str(e)}")
                         logger.warning(f"{post_result.get('result')}")
