@@ -1,12 +1,12 @@
+import urllib.parse
+
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
-    MessagesPlaceholder,
     SystemMessagePromptTemplate,
 )
-from langchain_core.messages import HumanMessage, AIMessage
-import urllib.parse
 
 from .. import CandidateReportList, Config, Model, State, logger
 
@@ -85,7 +85,7 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
 - すべてのリンクを漏れなく出力してください
 - リンクが相対的なパスである場合は、ベースURL（{url}）と組み合わせて完全なURLに変換してください
   例：
-  - 相対パス: "/documents/report.pdf" 
+  - 相対パス: "/documents/report.pdf"
   - ベースURL: "https://example.gov.jp/meeting/"
   - 完全URL: "https://example.gov.jp/documents/report.pdf"
   - 相対パス: "../files/data.pdf"
@@ -109,7 +109,7 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
         [system_prompt, assistant_prompt]
     )
     chain = prompt | llm | parser
-    
+
     # リトライ機能付きでJSONパースを実行
     max_retries = 3
     for attempt in range(max_retries):
@@ -121,14 +121,14 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
                     "main_content": state.get("main_content", ""),
                     "url": state.get("url", ""),
                     "format_instructions": parser.get_format_instructions()
-                }, 
+                },
                 Config().get()
             )
             break
-            
-        except Exception as e:
+
+        except Exception:
             if attempt == max_retries - 1:
-                logger.error(f"❌ 適切なフォーマットによる結果を得られませんでした")
+                logger.error("❌ 適切なフォーマットによる結果を得られませんでした")
                 result = {"reports": []}
             else:
                 continue
@@ -141,7 +141,7 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
         # Python側でURL正規化を実行（確実な相対パス変換）
         base_url = state.get("url", "")
         document_reports = []
-        
+
         # 1回のループで正規化、ログ出力、フィルタリングを実行
         sorted_reports = sorted(reports, key=lambda x: x["is_document"], reverse=True)
         for report in sorted_reports:
@@ -150,16 +150,16 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
                 original_url = report["url"]
                 normalized_url = urllib.parse.urljoin(base_url, original_url)
                 report["url"] = normalized_url
-            
+
             # ログ出力
             logger.info(
                 f"{'o' if report['is_document'] else 'x'} {report['name']} {report['reason']}"
             )
-            
+
             # 文書のみをフィルタリング
             if report["is_document"]:
                 document_reports.append(report)
-        
+
         reports = document_reports
 
     # 簡潔な結果メッセージを作成
@@ -175,7 +175,7 @@ Step 3. 取得したすべてのリンクについて、リンク先のURLとリ
     logger.info(f"✅ {len(reports)}件の関連資料を発見しました: {', '.join([r['name'] for r in reports])}")
 
     return {
-        **state, 
+        **state,
         "candidate_reports": CandidateReportList(reports=reports),
         "messages": state.get("messages", []) + [system_message, result_message]
     }

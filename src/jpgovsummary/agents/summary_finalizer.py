@@ -1,15 +1,10 @@
-import sys
-import re
-from typing import Dict, Any, NamedTuple
-from langchain_core.messages import HumanMessage, AIMessage
+from typing import NamedTuple
+
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 
 from .. import Model, State, logger
-from .bluesky_poster import (
-    MAX_CHARS_BLUESKY_SHORT,
-    MAX_CHARS_BLUESKY_LONG,
-    MIN_CHARS_SUMMARY
-)
+from .bluesky_poster import MAX_CHARS_BLUESKY_SHORT, MIN_CHARS_SUMMARY
 
 
 class QualityEvaluation(NamedTuple):
@@ -31,7 +26,7 @@ def summary_finalizer(state: State) -> State:
     logger.info("🟢 最終調整を行います")
 
     llm = Model().llm()
-    
+
     # Get current data
     final_summary = state.get("final_summary", "")
     overview = state.get("overview", "")
@@ -39,32 +34,32 @@ def summary_finalizer(state: State) -> State:
     target_report_summaries = state.get("target_report_summaries", [])
     overview_only = state.get("overview_only", False)
     batch = state.get("batch", False)
-    messages = state.get("messages", [])
-    
+    state.get("messages", [])
+
     # 会議ページかどうかを判定：初期値で設定されたフラグを使用（summary_integratorと同じロジック）
     is_meeting_page = state.get("is_meeting_page", False)  # デフォルトは個別文書として扱う
-    
+
     # Determine what to review based on mode
     # overview_onlyまたは議事録検出時はoverviewを使用
     use_overview_mode = (
-        overview_only or 
+        overview_only or
         state.get("meeting_minutes_detected", False)
     )
-    
+
     if use_overview_mode:
         current_summary = overview
     else:
         current_summary = final_summary
-    
+
     # Initialize review session if not exists
     if "review_session" not in state:
         state["review_session"] = {
             "original_summary": current_summary,
             "improvements": []
         }
-    
+
     review_session = state["review_session"]
-    
+
     while True:
         try:
             _display_current_summary(current_summary, url=url)
@@ -74,12 +69,12 @@ def summary_finalizer(state: State) -> State:
             if total_chars > MAX_CHARS_BLUESKY_SHORT:
                 # Simple character limit logic: shorten to 1000 chars
                 target_total_chars = MAX_CHARS_BLUESKY_SHORT
-                
+
                 logger.warning(f"⚠️ 要約が{total_chars}文字で長すぎるため{target_total_chars}文字以内に再生成します")
                 shortened_summary = _generate_shortened_summary(
                     llm, current_summary, overview, target_report_summaries, url, is_meeting_page, target_total_chars
                 )
-                
+
                 # Update the summary
                 current_summary = shortened_summary
                 if use_overview_mode:
@@ -87,7 +82,7 @@ def summary_finalizer(state: State) -> State:
                 else:
                     state["final_summary"] = current_summary
                     final_summary = current_summary
-                
+
                 review_session["improvements"].append({
                     "request": f"Auto-shorten from {total_chars} to fit {target_total_chars} char limit",
                     "result": shortened_summary
@@ -116,7 +111,7 @@ def summary_finalizer(state: State) -> State:
                     else:
                         state["final_summary"] = current_summary
                         final_summary = current_summary
-                    
+
                     review_session["improvements"].append({
                         "request": user_input,
                         "result": new_summary
@@ -135,12 +130,12 @@ def summary_finalizer(state: State) -> State:
 # - Edit the summary above directly, OR
 # - Write improvement instructions below, OR
 # - Both approaches work!
-# 
+#
 # Note for improvement instructions:
 # - Use ## or lower for section headings (# is system reserved)
 # - Example: ## Content to add, ### Detail items, etc.
 # - Structured instructions enable more accurate improvements
-# 
+#
 # Save with Ctrl+S when done, or Ctrl+Q to cancel.
 """
 
@@ -151,7 +146,7 @@ def summary_finalizer(state: State) -> State:
                     if line.strip() == '# Improvement instructions (optional)':
                         improvement_line_index = i + 1  # +1 to place cursor right after the header
                         break
-                
+
                 cursor_position = 0
                 if improvement_line_index > 0:
                     cursor_position = len('\n'.join(lines_before_improvement[:improvement_line_index])) + 1
@@ -167,7 +162,7 @@ def summary_finalizer(state: State) -> State:
                         else:
                             state["final_summary"] = current_summary
                             final_summary = current_summary
-                        
+
                         review_session["improvements"].append({
                             "request": "Editor input",
                             "result": new_summary
@@ -176,7 +171,7 @@ def summary_finalizer(state: State) -> State:
                         logger.error("❌ エディター入力を処理できませんでした")
                 else:
                     logger.info("変更はありませんでした")
-                
+
         except KeyboardInterrupt:
             logger.info("キーボード中断により現在の要約を使用")
             state["review_approved"] = False
@@ -185,7 +180,7 @@ def summary_finalizer(state: State) -> State:
             logger.info("EOF検出により現在の要約を使用")
             state["review_approved"] = False
             break
-    
+
     # Update review session
     state["review_session"] = review_session
 
@@ -205,28 +200,28 @@ def summary_finalizer(state: State) -> State:
     return {**state, "messages": [system_message, message]}
 
 
-def _generate_improved_summary(llm, current_summary: str, improvement_request: str, 
+def _generate_improved_summary(llm, current_summary: str, improvement_request: str,
                              overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
     """Generate an improved summary based on human feedback"""
-    
+
     source_context = ""
     if summaries:
         source_context = "\n\n".join([
             f"【{s.name}】\n{s.content}" for s in summaries if s.content
         ])
-    
+
     # Calculate max characters based on URL length
     url_length = len(url)
     max_chars = max(MIN_CHARS_SUMMARY, MAX_CHARS_BLUESKY_SHORT - url_length - 1)
-    
+
     # Handle improvement request
     # 会議 or 文書に応じて表現を変更
     subject_type = "会議" if is_meeting_page else "文書"
     subject_expression = "「会議名」では〜が議論された" if is_meeting_page else "「文書名」によれば〜"
-    
+
     prompt = PromptTemplate(
         input_variables=["current_summary", "improvement_request", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
-        template="""現在の{subject_type}要約に対して改善要求がありました。要求に従って{subject_type}要約を改善してください。
+        template=f"""現在の{subject_type}要約に対して改善要求がありました。要求に従って{subject_type}要約を改善してください。
 
 # 改善要求
 {{improvement_request}}
@@ -260,9 +255,9 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
   - 会議の形式・構成に関する情報（「書面開催」「対面開催」「Web会議」等）
   - {subject_type}の出席者・参加者情報
   - 会議の場合、どんな資料が配布されたかの情報
-""".format(subject_type=subject_type, subject_expression=subject_expression)
+"""
     )
-    
+
     try:
         response = llm.invoke(prompt.format(
             current_summary=current_summary,
@@ -274,7 +269,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
             subject_expression=subject_expression
         ))
         improved_summary = response.content.strip()
-        
+
         return improved_summary
     except Exception as e:
         logger.error(f"❌ 要約改善中にエラーが発生: {str(e)}")
@@ -282,21 +277,21 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
 
 def _generate_shortened_summary(llm, current_summary: str, overview: str, summaries: list, url: str, is_meeting_page: bool, target_total_chars: int) -> str:
     """3段階の要約短縮処理：1.短縮 → 2.品質確認 → 3.品質改善"""
-    
+
     source_context = ""
     if summaries:
         source_context = "\n\n".join([
             f"【{s.name}】\n{s.content}" for s in summaries if s.content
         ])
-    
+
     # Calculate max characters based on URL length
     url_length = len(url)
     max_chars = max(50, target_total_chars - url_length - 1)
-    
+
     # 会議 or 文書に応じて表現を変更
     subject_type = "会議" if is_meeting_page else "文書"
     subject_expression = "「会議名」では〜が議論された" if is_meeting_page else "「文書名」によれば〜"
-    
+
     prompt = PromptTemplate(
         input_variables=["current_summary", "overview", "source_context", "max_chars", "subject_type", "subject_expression"],
         template="""承認された{subject_type}要約を{max_chars}文字以下に短縮し、品質確認・改善を行ってください。
@@ -352,7 +347,7 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
 # 出力
 最終的に短縮・品質確認・改善を完了した要約のみを出力してください（処理手順や説明は不要）。
         """)
-    
+
     try:
         response = llm.invoke(prompt.format(
             current_summary=current_summary,
@@ -362,10 +357,10 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
             subject_type=subject_type,
             subject_expression=subject_expression
         ))
-        
+
         result_summary = response.content.strip()
         return result_summary
-        
+
     except Exception as e:
         logger.error(f"❌ 要約短縮中にエラーが発生: {str(e)}")
         return current_summary
@@ -383,7 +378,7 @@ def _is_positive_response(user_input: str) -> bool:
         # Variations
         "おk", "おｋ", "ｏｋ", "ＯＫ", "オーキー", "だいじょうぶ", "大丈夫", "問題ない", "もんだいない"
     ]
-    
+
     # Check exact matches (case insensitive)
     normalized_input = user_input.lower().strip()
     return normalized_input in positive_keywords
@@ -391,16 +386,16 @@ def _is_positive_response(user_input: str) -> bool:
 
 def _process_editor_result(llm, editor_result: str, current_summary: str, overview: str, summaries: list, url: str, is_meeting_page: bool) -> str:
     """エディタ結果を処理して新しいサマリーを生成"""
-    
+
     lines = editor_result.strip().split('\n')
-    
+
     # Find the sections
     current_section = []
     improvement_section = []
-    
+
     in_current = False
     in_improvement = False
-    
+
     for line in lines:
         if line.strip().startswith('# Summary'):
             in_current = True
@@ -414,20 +409,20 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
             in_current = False
             in_improvement = False
             continue
-        
+
         if in_current:
             current_section.append(line)
         elif in_improvement:
             improvement_section.append(line)
-    
+
     # Extract edited summary and improvement requests
     edited_summary = '\n'.join(current_section).strip()
     improvement_request = '\n'.join(improvement_section).strip()
-    
+
     # Check if user modified the summary directly and/or provided improvement instructions
     has_direct_edit = edited_summary and edited_summary != current_summary
     has_improvement_request = improvement_request
-    
+
     if has_direct_edit and has_improvement_request:
         logger.info(f"{improvement_request.replace('\n', ' ')}")
         updated_summary = _generate_improved_summary(llm, edited_summary, improvement_request, overview, summaries, url, is_meeting_page)
@@ -446,26 +441,24 @@ def _process_editor_result(llm, editor_result: str, current_summary: str, overvi
 
 def _display_current_summary(final_summary: str, url: str) -> None:
     """現在のサマリーを表示する"""
-    summary_message = f"{final_summary}\n{url}"
     logger.info(f"📄 {final_summary}")
     logger.info(f"🔗 {url}")
 
 def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -> str:
     """Full-screen editor using prompt_toolkit"""
     try:
+
         from prompt_toolkit.application import Application
         from prompt_toolkit.buffer import Buffer
+
+        # Create buffer for text input with proper initialization
+        from prompt_toolkit.formatted_text import HTML
+        from prompt_toolkit.key_binding import KeyBindings
         from prompt_toolkit.layout.containers import HSplit, Window
         from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
         from prompt_toolkit.layout.layout import Layout
-        from prompt_toolkit.key_binding import KeyBindings
-        from prompt_toolkit.formatted_text import HTML
-        import os
-        
-        # Create buffer for text input with proper initialization
-        from prompt_toolkit.document import Document
         buffer = Buffer(multiline=True)
-        
+
         # Set initial content explicitly
         if initial_content:
             buffer.text = initial_content
@@ -474,35 +467,35 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
                 buffer.cursor_position = cursor_position
             else:
                 buffer.cursor_position = len(initial_content)
-        
+
         # Create key bindings
         kb = KeyBindings()
-        
+
         @kb.add('c-s')  # Ctrl+S to save and exit
         def _(event):
             event.app.exit(result=buffer.text)
-        
+
         @kb.add('c-q')  # Ctrl+Q to quit without saving
         def _(event):
             event.app.exit(result=initial_content)
-        
+
         @kb.add('c-x', 'c-c')  # Ctrl+X Ctrl+C to save and exit
         def _(event):
             event.app.exit(result=buffer.text)
-        
+
         @kb.add('c-c')  # Ctrl+C to raise KeyboardInterrupt
         def _(event):
             raise KeyboardInterrupt()
-        
+
         # Help overlay state
         help_visible = [False]  # Use list to make it mutable in nested function
-        
+
         @kb.add('c-g')  # Ctrl+G for help
         def _(event):
             # Toggle help overlay
             help_visible[0] = not help_visible[0]
             event.app.invalidate()  # Refresh display
-        
+
         # Create dynamic status line
         def get_status_text():
             line_count = buffer.document.line_count
@@ -510,7 +503,7 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
             cursor_col = buffer.document.cursor_position_col + 1
             char_count = len(buffer.text)
             return f'行 {cursor_line}/{line_count}  列 {cursor_col}  文字数 {char_count}'
-        
+
         # Help content function
         def get_help_content():
             if help_visible[0]:
@@ -537,13 +530,13 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
 </style>''')
             else:
                 return HTML('')
-        
+
         # Create layout with nano-style interface
         main_content = [
             # Header with title
             Window(
                 content=FormattedTextControl(
-                    HTML(f'<style bg="ansiblue" fg="ansiwhite"><b> Fullscreen Editor </b></style>')
+                    HTML('<style bg="ansiblue" fg="ansiwhite"><b> Fullscreen Editor </b></style>')
                 ),
                 height=1,
                 dont_extend_height=True,
@@ -554,7 +547,7 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
                 wrap_lines=True,
             ),
         ]
-        
+
         # Add help overlay if visible
         help_window = Window(
             content=FormattedTextControl(get_help_content),
@@ -562,7 +555,7 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
             dont_extend_height=True,
         )
         main_content.append(help_window)
-        
+
         # Add status and help bar
         main_content.extend([
             # Status line
@@ -584,11 +577,11 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
                 dont_extend_height=True,
             ),
         ])
-        
+
         root_container = HSplit(main_content)
-        
+
         layout = Layout(root_container)
-        
+
         # Create application
         app = Application(
             layout=layout,
@@ -604,7 +597,7 @@ def _fullscreen_editor(initial_content: str = "", cursor_position: int = None) -
         # Run the application
         result = app.run()
         return result.strip() if result else initial_content
-        
+
     except Exception as e:
         logger.error(f"❌ フルスクリーンエディターエラー: {type(e).__name__}: {str(e)}")
         return initial_content
@@ -615,13 +608,13 @@ def _enhanced_input(prompt_text: str) -> str:
     try:
         from prompt_toolkit import prompt
         from prompt_toolkit.history import InMemoryHistory
-        
+
         # Create history for this session
         history = InMemoryHistory()
         result = prompt(f"{prompt_text} ", history=history)
-        
+
         return result.strip()
-        
+
     except (EOFError, KeyboardInterrupt):
         # Re-raise these as they should be handled by the main loop
         raise

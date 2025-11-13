@@ -1,16 +1,13 @@
-import sys
 import asyncio
-import os
 import json
+import os
 import re
-from typing import Dict, Any
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.prompts import PromptTemplate
+
+from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
 from .. import Model, State, logger
-
 
 # Character limits for summaries
 MAX_CHARS_INTEGRATED_SUMMARY = 2000  # Maximum characters for integrated summary (summary + URL + newline)
@@ -25,35 +22,34 @@ def bluesky_poster(state: State) -> State:
     Human reviewerの後にBlueskyへの投稿を確認・実行するエージェント
     """
     logger.info("🟢 Blueskyに投稿...")
-    
+
     # 最終要約とURLを取得
     final_summary = state.get("final_review_summary") or state.get("final_summary", "")
     url = state.get("url", "")
-    
+
     if not final_summary:
         logger.warning("⚠️ Bluesky投稿用の最終要約がありません")
         state["bluesky_post_completed"] = True
         return state
-    
+
     try:
         # 投稿内容をフォーマット
         post_content = _format_bluesky_content(final_summary, url)
-        
+
         # ユーザーに投稿意思を確認
         if _ask_user_for_bluesky_posting(final_summary, url, post_content):
             # MCPClientを使ってBluesky投稿を実行
             post_result = asyncio.run(_post_to_bluesky_via_mcp(post_content))
-            
+
             if post_result["success"]:
                 # AT URIがあれば抽出してログに含める
-                uri = "None"
                 if post_result.get("result"):
                     try:
                         result_data = json.loads(str(post_result["result"]))
                         logger.debug(f"{json.dumps(result_data, ensure_ascii=False, indent=2)}")
                         # _parse_ssky_response内の_extract_uriヘルパーを再利用
                         parsed_response = _parse_ssky_response(str(post_result["result"]))
-                        uri = parsed_response.get("uri", "None")
+                        parsed_response.get("uri", "None")
                     except (json.JSONDecodeError, KeyError) as e:
                         logger.warning(f"{type(e).__name__}: {str(e)}")
                         logger.warning(f"{post_result.get('result')}")
@@ -72,11 +68,11 @@ def bluesky_poster(state: State) -> State:
         else:
             state["bluesky_post_completed"] = True
             state["bluesky_post_requested"] = False
-            
+
     except Exception as e:
         logger.error(f"❌ Bluesky投稿で想定しないエラーが発生しました: {type(e).__name__}: {str(e)}")
         state["bluesky_post_completed"] = True
-        
+
     return state
 
 
@@ -105,25 +101,25 @@ def _parse_ssky_response(result_str: str) -> dict:
 
     try:
         parsed = json.loads(result_str)
-        
+
         # HTTPステータスコードベースの判定（最優先）
         http_code = parsed.get("http_code")
         if http_code is not None:
             return _success_response(parsed) if 200 <= http_code < 300 else _error_response(parsed.get("message", f"HTTP error {http_code}"))
-        
+
         # statusフィールドベースの判定
         status = parsed.get("status")
         if status in ["success", "ok"]:
             return _success_response(parsed)
         elif status in ["error", "failure"]:
             return _error_response(parsed.get("message", "Failed to post"))
-        
+
         # 後方互換性：URIの存在チェック
         if parsed.get("uri"):
             return _success_response(parsed)
-        
+
         return _error_response(f"Unknown response format: {result_str}")
-        
+
     except json.JSONDecodeError:
         # JSONではない場合、文字列パターンマッチング
         success_indicators = ["posted successfully", "successfully posted", "posted to bluesky", "post has been", "successfully sent", "message posted"]
@@ -137,7 +133,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
     success = False
     result_data = None
     error_msg = None
-    
+
     try:
         # 環境変数からSSKY_USERを取得
         ssky_user = os.getenv("SSKY_USER")
@@ -160,33 +156,33 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                     "transport": "stdio",
                 }
             })
-            
+
             # MCPツールを取得
             try:
                 tools = await client.get_tools()
-                
+
                 # LangGraphエージェントを作成（実際にツールを実行する）
                 llm = Model().llm()
                 agent = create_react_agent(llm, tools)
-                
+
                 # メッセージを作成して投稿を依頼（JSONフォーマットを指定）
                 message = f"Please post the following content to Bluesky using output_format='json': '{content}'"
-                
+
                 try:
                     # エージェントを実行（ツールが実際に実行される）
                     result = await agent.ainvoke({
                         "messages": [HumanMessage(content=message)]
                     })
-                    
+
                     # 結果を解析
                     if "messages" in result:
                         last_message = result["messages"][-1]
                         response_content = last_message.content if hasattr(last_message, 'content') else str(last_message)
-                        
+
                         # ツール呼び出しをチェック（messagesからも確認）
                         actual_tool_result = None
                         tool_used = None
-                        
+
                         # messagesからツール呼び出しを検出
                         for msg in result["messages"]:
                             if hasattr(msg, 'tool_calls') and msg.tool_calls:
@@ -198,7 +194,7 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                                 # ToolMessageからの結果を取得
                                 if hasattr(msg, 'name') and msg.name == 'ssky_post':
                                     actual_tool_result = msg.content
-                        
+
                         # intermediate_stepsからも確認
                         if "intermediate_steps" in result and result["intermediate_steps"]:
                             for step in result["intermediate_steps"]:
@@ -208,29 +204,29 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                                         actual_tool_result = observation
                                         tool_used = action.tool
                                         break
-                        
+
                         if tool_used:
                             logger.info(f"{tool_used}を使用します")
-                        
+
                         # 実際のツール結果がある場合はそれを優先、なければエージェントレスポンスを使用
                         result_to_check = actual_tool_result if actual_tool_result is not None else response_content
-                        
+
                         # エラーパターンの判定（シンプル版：HTTPステータスコードベース）
                         result_str = str(result_to_check)
-                        
+
                         # "Error: 4xx" または "Error: 5xx" パターンをチェック
                         error_pattern = re.compile(r'Error:\s*[45]\d\d')
                         is_error = bool(error_pattern.search(result_str)) or "Command timed out" in result_str
-                        
+
                         if is_error:
                             error_msg = str(result_to_check)
                         else:
                             # 成功判定 - 新しいssky mcp-serverのJSONフォーマットに対応
                             result_str = str(result_to_check)
-                            
+
                             # 新しい成功判定ロジックを使用
                             parsed_result = _parse_ssky_response(result_str)
-                            
+
                             if parsed_result["success"]:
                                 success = True
                                 result_data = result_str
@@ -246,19 +242,19 @@ async def _post_to_bluesky_via_mcp(content: str) -> dict:
                                     error_msg = parsed_result["message"]
                     else:
                         error_msg = "No response from agent"
-                        
+
                 except Exception as e:
                     logger.error(f"❌ エージェント実行に失敗: {str(e)}")
                     error_msg = f"Failed to execute agent: {str(e)}"
-                    
+
             except Exception as e:
                 logger.error(f"❌ MCPツール取得に失敗しました: {str(e)}")
                 error_msg = f"Failed to get MCP tools: {str(e)}"
-                
+
     except Exception as e:
         logger.error(f"❌ MCP経由Bluesky投稿に失敗: {str(e)}", exc_info=True)
         error_msg = str(e)
-    
+
     # 単一のreturn文
     return {
         "success": success,
@@ -312,4 +308,4 @@ def _safe_input(prompt: str, default: str = "?") -> str:
         return default
     except (EOFError, KeyboardInterrupt):
         print("")
-        raise 
+        raise

@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from PyPDF2 import PdfReader
 
 from .. import logger
-from ..utils import is_local_file, get_local_file_path, validate_local_file
+from ..utils import get_local_file_path, is_local_file, validate_local_file
 
 
 def load_pdf_as_text(url: str) -> list[str]:

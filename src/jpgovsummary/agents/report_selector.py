@@ -1,10 +1,10 @@
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain_core.messages import HumanMessage, AIMessage
 
 from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
 

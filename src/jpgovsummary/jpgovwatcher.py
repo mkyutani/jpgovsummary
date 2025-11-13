@@ -7,20 +7,20 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from . import Config, Model, Report, State, TargetReportList, logger
-from .logger import set_batch_mode
+from . import Config, Model, Report, State, TargetReportList
 from .agents import (
+    bluesky_poster,
     document_summarizer,
-    summary_finalizer,
     main_content_extractor,
     overview_generator,
     report_enumerator,
     report_selector,
+    summary_finalizer,
     summary_integrator,
-    bluesky_poster,
 )
+from .logger import set_batch_mode
 from .tools import load_html_as_markdown
-from .utils import is_local_file, get_local_file_path, validate_local_file
+from .utils import get_local_file_path, is_local_file, validate_local_file
 
 
 def get_page_type(url: str) -> str:
@@ -36,13 +36,13 @@ def get_page_type(url: str) -> str:
     # Check if it's a local file
     if is_local_file(url):
         file_path = get_local_file_path(url)
-        
+
         try:
             validate_local_file(file_path)
         except (FileNotFoundError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return "unknown"
-        
+
         # Determine type by file extension
         file_path_lower = file_path.lower()
         if file_path_lower.endswith(".pdf"):
@@ -53,7 +53,7 @@ def get_page_type(url: str) -> str:
             return "text"
         else:
             return "unknown"
-    
+
     # Handle remote URLs (existing logic)
     try:
         headers = {
@@ -92,7 +92,7 @@ def should_process_additional_files(state: State) -> str:
     # overview-onlyモードまたは議事録検出時は直接summary_finalizerへ
     if state.get("overview_only", False) or state.get("meeting_minutes_detected", False):
         return "summary_finalizer"
-    
+
     # 通常の場合は report_enumerator へ
     return "report_enumerator"
 
@@ -117,7 +117,7 @@ def should_continue_target_reports(state: State) -> str | bool:
 
     # すべての資料の要約が完了した場合
     # target_report_summariesがある場合のみsummary_integratorへ
-    target_report_summaries = state.get("target_report_summaries", [])
+    state.get("target_report_summaries", [])
 
     # すべての資料の要約が完了した場合はsummary_integratorへ遷移
     # summary_integratorで有効な要約がない場合のハンドリングを行う
@@ -131,7 +131,7 @@ def main() -> int:
     parser.add_argument("url", nargs="?", type=str, help="URL of the meeting or local file path (PDF/HTML)")
     parser.add_argument("--model", type=str, default=None, help="OpenAI model to use")
     parser.add_argument(
-        "--batch", action="store_true", 
+        "--batch", action="store_true",
         help="Run in batch mode without human interaction"
     )
     parser.add_argument(
@@ -199,7 +199,7 @@ def main() -> int:
 
         graph.add_edge(START, "main_content_extractor")
         graph.add_edge("main_content_extractor", "overview_generator")
-        
+
         # overview_generatorの後の処理（条件分岐で制御）
         graph.add_conditional_edges(
             "overview_generator",
@@ -209,7 +209,7 @@ def main() -> int:
                 "report_enumerator": "report_enumerator",
             },
         )
-        
+
         graph.add_edge("report_enumerator", "report_selector")
 
         # report_selectorの後の条件分岐を追加
@@ -236,7 +236,7 @@ def main() -> int:
 
         # summary_integratorの後は常にsummary_finalizerへ
         graph.add_edge("summary_integrator", "summary_finalizer")
-        
+
         # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
         if args.skip_bluesky_posting:
             # Bluesky投稿をスキップする場合は直接終了
@@ -266,7 +266,7 @@ def main() -> int:
         graph.add_edge(START, "document_summarizer")
         graph.add_edge("document_summarizer", "summary_integrator")
         graph.add_edge("summary_integrator", "summary_finalizer")
-        
+
         # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
         if args.skip_bluesky_posting:
             # Bluesky投稿をスキップする場合は直接終了

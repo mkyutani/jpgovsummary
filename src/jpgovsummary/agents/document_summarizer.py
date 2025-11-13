@@ -1,19 +1,19 @@
 from langchain.chains.summarize import load_summarize_chain
 from langchain.prompts import PromptTemplate
 from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Model, State, Summary, TargetReportList, logger
+from .. import Model, State, Summary, logger
 from ..tools import load_pdf_as_text
 
 
 def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
     """文書タイプを判定する
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         tuple[str, str, str, dict]: (判定結果, 判定理由, 根拠テキスト, 詳細情報)
             判定結果: "word" | "powerpoint" | "agenda" | "participants" | "other"
@@ -23,12 +23,12 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
     """
     from langchain.output_parsers import PydanticOutputParser
     from pydantic import BaseModel, Field
-    
+
     class CategoryAnalysis(BaseModel):
         score: int = Field(description="重要度スコア（1-5点）", ge=1, le=5)
         reason: str = Field(description="スコアの理由")
         evidence: str = Field(description="根拠テキスト例")
-    
+
     class DocumentTypeAnalysis(BaseModel):
         word: CategoryAnalysis = Field(description="Word文書の分析")
         powerpoint: CategoryAnalysis = Field(description="PowerPoint文書の分析")
@@ -38,7 +38,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
         survey: CategoryAnalysis = Field(description="調査・アンケートの分析")
         other: CategoryAnalysis = Field(description="その他の分析")
         conclusion: str = Field(description="最も可能性が高いと判断される形式")
-    
+
     llm = Model().llm()
     parser = PydanticOutputParser(pydantic_object=DocumentTypeAnalysis)
     # 最初の数ページを分析用に取得（最大10ページ）
@@ -51,7 +51,7 @@ def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:
         merged_text = f"ページ1:\n{sample_texts[0]}"
     else:
         merged_text = "\n\n".join([f"ページ{i+1}:\n{text}" for i, text in enumerate(sample_texts)])
-    
+
     # 文書判定プロンプト
     detection_prompt = PromptTemplate(
         input_variables=["text", "total_pages", "pages_count", "format_instructions"],
@@ -259,15 +259,15 @@ PDFテキスト:
 
 {format_instructions}
     """)
-    
+
     chain = detection_prompt | llm | parser
     result = chain.invoke({
-        "text": merged_text, 
+        "text": merged_text,
         "total_pages": len(texts),
         "pages_count": pages_to_analyze,
         "format_instructions": parser.get_format_instructions()
     })
-    
+
     # Pydanticオブジェクトから情報を抽出
     scores = {
         "Word": result.word.score,
@@ -278,7 +278,7 @@ PDFテキスト:
         "Survey": result.survey.score,
         "Other": result.other.score
     }
-    
+
     reasoning = {
         "Word": result.word.reason,
         "PowerPoint": result.powerpoint.reason,
@@ -288,7 +288,7 @@ PDFテキスト:
         "Survey": result.survey.reason,
         "Other": result.other.reason
     }
-    
+
     evidence = {
         "Word": result.word.evidence,
         "PowerPoint": result.powerpoint.evidence,
@@ -298,32 +298,32 @@ PDFテキスト:
         "Survey": result.survey.evidence,
         "Other": result.other.evidence
     }
-    
+
     conclusion = result.conclusion
-    
+
     # 判定結果をマッピング（7カテゴリ）
     doc_type = None
     doc_reason = ""
-    
+
     # カテゴリー名とタイプのマッピング
     category_mapping = {
         "word": "Word",
-        "powerpoint": "PowerPoint", 
+        "powerpoint": "PowerPoint",
         "agenda": "Agenda",
         "participants": "Participants",
         "news": "News",
         "survey": "Survey",
         "other": "Other"
     }
-    
+
     if scores:
         # 最高スコアのカテゴリーを特定
         max_score = max(scores.values())
         max_categories = [cat for cat, score in scores.items() if score == max_score]
-        
+
         if max_categories:
             top_category = max_categories[0]  # 複数ある場合は最初の一つ
-            
+
             # カテゴリー名から doc_type を決定
             for doc_type_key, category_name in category_mapping.items():
                 if category_name in top_category:
@@ -341,7 +341,7 @@ PDFテキスト:
                 doc_reason = "結論から判定"
                 selected_evidence = "なし"
                 break
-    
+
     # 詳細情報をまとめる
     detail_info = {
         "scores": scores,
@@ -361,19 +361,19 @@ PDFテキスト:
 
 def extract_word_title(texts: list[str]) -> str:
     """Word文書のタイトルを抽出する
-    
+
     Args:
         texts: PDFから抽出されたテキストのリスト
-        
+
     Returns:
         str: 抽出されたタイトル
     """
     llm = Model().llm()
-    
+
     # 最初の5ページを取得
     title_pages = min(5, len(texts))
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts[:title_pages])])
-    
+
     title_prompt = PromptTemplate(
         input_variables=["text", "pages"],
         template="""以下はWord文書の最初の{pages}ページです。文書のタイトルを抽出してください。
@@ -389,7 +389,7 @@ def extract_word_title(texts: list[str]) -> str:
 ### 出力形式
 タイトルのみを出力してください（説明や前置きは不要）
     """)
-    
+
     chain = title_prompt | llm
     result = chain.invoke({"text": merged_text, "pages": title_pages})
     extracted_title = result.content.strip()
@@ -398,19 +398,19 @@ def extract_word_title(texts: list[str]) -> str:
 
 def extract_word_table_of_contents(texts: list[str]) -> str:
     """Word文書の目次を抽出する
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         str: 抽出された目次（構造化されたテキスト）
     """
     llm = Model().llm()
-    
+
     # 最初の10ページから目次を抽出
     toc_pages = min(10, len(texts))
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts[:toc_pages])])
-    
+
     toc_prompt = PromptTemplate(
         input_variables=["text", "pages"],
         template="""以下はWord文書の最初の{pages}ページです。目次部分を抽出してください。
@@ -447,27 +447,27 @@ def extract_word_table_of_contents(texts: list[str]) -> str:
 - ページ番号は除外
 - 簡潔で読みやすい形式
     """)
-    
+
     chain = toc_prompt | llm
     result = chain.invoke({"text": merged_text, "pages": toc_pages})
-    
+
     extracted_toc = result.content.strip()
-    
+
     return extracted_toc
 
 
 def create_summary_from_toc(title: str, table_of_contents: str) -> str:
     """目次から要約を作成する
-    
+
     Args:
         title: 文書のタイトル
         table_of_contents: 抽出された目次
-        
+
     Returns:
         str: 目次ベースの要約
     """
     llm = Model().llm()
-    
+
     toc_summary_prompt = PromptTemplate(
         input_variables=["title", "toc"],
         template="""以下のWord文書のタイトルと目次から、文書の要約を作成してください。
@@ -493,32 +493,32 @@ def create_summary_from_toc(title: str, table_of_contents: str) -> str:
 - 文書の構造と論理的な流れを重視
 - 「検討」「分析」「提案」等の性格を明示
     """)
-    
+
     chain = toc_summary_prompt | llm
     result = chain.invoke({
         "title": title,
         "toc": table_of_contents
     })
-    
+
     summary = result.content.strip()
-    
+
     return summary
 
 
 def agenda_summarize(texts: list[str]) -> dict:
     """議事次第の要約処理
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         dict: {"title": str, "summary": str}
     """
     llm = Model().llm()
-    
+
     # 全文を結合
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
-    
+
     # タイトル抽出
     title_prompt = PromptTemplate(
         input_variables=["text"],
@@ -534,11 +534,11 @@ def agenda_summarize(texts: list[str]) -> dict:
 ### 出力形式
 会議名のみを出力してください（説明や前置きは不要）
     """)
-    
+
     title_chain = title_prompt | llm
     title_result = title_chain.invoke({"text": merged_text})
     title = title_result.content.strip()
-    
+
     # 要約作成
     agenda_prompt = PromptTemplate(
         input_variables=["text"],
@@ -559,28 +559,28 @@ def agenda_summarize(texts: list[str]) -> dict:
 - 1-2文で簡潔に
 - 日時は「令和○年○月○日」形式で
     """)
-    
+
     chain = agenda_prompt | llm
     result = chain.invoke({"text": merged_text})
     summary = result.content.strip()
-    
+
     return {"title": title, "summary": summary}
 
 
 def news_based_summarize(texts: list[str]) -> dict:
     """ニュース・お知らせ（プレスリリース）の要約処理
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         dict: {"title": str, "summary": str}
     """
     llm = Model().llm()
-    
+
     # 全文を結合
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
-    
+
     # タイトル抽出
     title_prompt = PromptTemplate(
         input_variables=["text"],
@@ -596,11 +596,11 @@ def news_based_summarize(texts: list[str]) -> dict:
 ### 出力形式
 タイトルのみを出力してください（説明や前置きは不要）
     """)
-    
+
     title_chain = title_prompt | llm
     title_result = title_chain.invoke({"text": merged_text})
     title = title_result.content.strip()
-    
+
     # 要約作成
     news_prompt = PromptTemplate(
         input_variables=["text"],
@@ -624,28 +624,28 @@ def news_based_summarize(texts: list[str]) -> dict:
 - 問い合わせ先や技術的詳細は除外
 - 日付は「令和○年○月○日」形式で
     """)
-    
+
     chain = news_prompt | llm
     result = chain.invoke({"text": merged_text})
     summary = result.content.strip()
-    
+
     return {"title": title, "summary": summary}
 
 
 def participants_summarize(texts: list[str]) -> dict:
     """参加者一覧の要約処理
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         dict: {"title": str, "summary": str}
     """
     llm = Model().llm()
-    
+
     # 全文を結合
     merged_text = "\n\n".join([f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(texts)])
-    
+
     # タイトル抽出
     title_prompt = PromptTemplate(
         input_variables=["text"],
@@ -665,7 +665,7 @@ def participants_summarize(texts: list[str]) -> dict:
     title_chain = title_prompt | llm
     title_result = title_chain.invoke({"text": merged_text})
     title = title_result.content.strip()
-    
+
     # 要約作成
     participants_prompt = PromptTemplate(
         input_variables=["text"],
@@ -685,34 +685,34 @@ def participants_summarize(texts: list[str]) -> dict:
 - 1文で簡潔に
 - 役職者が複数いる場合は代表者のみ
     """)
-    
+
     chain = participants_prompt | llm
     result = chain.invoke({"text": merged_text})
     summary = result.content.strip()
-    
+
     return {"title": title, "summary": summary}
 
 
 def word_based_summarize(texts: list[str]) -> dict:
     """Wordベース文書の要約処理
-    
+
     タイトルと目次から文書の全体構造を把握し、構造ベースの要約を生成
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         dict: {"title": str, "summary": str}
     """
-    llm = Model().llm()
-    
+    Model().llm()
+
     # ステップ1: タイトル抽出
     title = extract_word_title(texts)
     logger.info(f"このスライドのタイトルは「{title.replace('\n', '\\n')}」です")
 
     # ステップ2: 目次抽出
     table_of_contents = extract_word_table_of_contents(texts)
-    
+
     # ステップ3: 目次から要約を作成
     if table_of_contents and table_of_contents != "目次なし":
         logger.info("目次から要約を作成します")
@@ -721,31 +721,31 @@ def word_based_summarize(texts: list[str]) -> dict:
         # 目次がない場合は従来ロジックを使用
         logger.info("目次が見つからないため、全文から要約を作成します")
         summary = traditional_summarize(texts)
-    
+
     return {"title": title, "summary": summary}
 
 
 def extract_powerpoint_title(texts: list[str]) -> str:
     """powerpointのタイトルを抽出する
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         str: 抽出されたタイトル
     """
     llm = Model().llm()
-    
+
     # 最初の3ページからタイトル抽出
     pages_to_analyze = min(3, len(texts))
     sample_texts = texts[:pages_to_analyze]
-    
+
     # ページ数に応じてサンプルテキストを準備
     if pages_to_analyze == 1:
         merged_text = f"ページ1:\n{sample_texts[0]}"
     else:
         merged_text = "\n\n".join([f"ページ{i+1}:\n{text}" for i, text in enumerate(sample_texts)])
-    
+
     title_prompt = PromptTemplate(
         input_variables=["text"],
         template="""以下はPowerPoint資料の最初の数ページです。
@@ -763,7 +763,7 @@ def extract_powerpoint_title(texts: list[str]) -> str:
 ### 出力形式
 タイトルのみを出力してください（説明や前置きは不要）
         """)
-    
+
     chain = title_prompt | llm
     result = chain.invoke({"text": merged_text})
     extracted_title = result.content.strip()
@@ -772,34 +772,34 @@ def extract_powerpoint_title(texts: list[str]) -> str:
 
 def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
     """10ページずつスライドタイトルを抽出し、重要度をスコアリング
-    
+
     Args:
         texts: PDFから抽出されたテキストのリスト
         start_page: 開始ページ（0ベース）
         end_page: 終了ページ（0ベース、inclusive）
-    
+
     Returns:
         dict: {"slides": [{"page": int, "title": str, "score": int, "reason": str}]}
     """
     from langchain.output_parsers import PydanticOutputParser
     from pydantic import BaseModel, Field
-    
+
     class SlideInfo(BaseModel):
         page: int = Field(description="ページ番号")
         title: str = Field(description="スライドタイトル")
         score: int = Field(description="重要度スコア（1-5点）", ge=1, le=5)
         reason: str = Field(description="スコアの理由")
-    
+
     class SlideAnalysis(BaseModel):
         slides: list[SlideInfo] = Field(description="スライド分析結果")
-    
+
     llm = Model().llm()
     parser = PydanticOutputParser(pydantic_object=SlideAnalysis)
-    
+
     # 指定範囲のページを取得
     page_texts = texts[start_page:end_page+1]
     content = "\n\n".join([f"--- ページ {start_page + i + 1} ---\n{text}" for i, text in enumerate(page_texts)])
-    
+
     # スコアリング基準：文書タイトルとの関連性も重視
     scoring_criteria = """
 5点: アジェンダ・目次・検討事項・主な論点・まとめ・結論・骨子・セクション見出し
@@ -847,9 +847,9 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
 
 {{format_instructions}}
         """)
-    
+
     chain = prompt | llm | parser
-    
+
     # リトライ機能付きでJSONパースを実行
     max_retries = 3
     for attempt in range(max_retries):
@@ -860,12 +860,12 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
                 "content": content,
                 "format_instructions": parser.get_format_instructions(),
             })
-            
+
             return result
-            
-        except Exception as e:
+
+        except Exception:
             if attempt == max_retries - 1:
-                logger.error(f"❌ 適切なフォーマットによる結果を得られませんでした")
+                logger.error("❌ 適切なフォーマットによる結果を得られませんでした")
                 return SlideAnalysis(slides=[])
             else:
                 continue
@@ -875,24 +875,24 @@ def extract_titles_and_score(texts: list[str], start_page: int, end_page: int):
 
 def powerpoint_based_summarize(texts: list[str]) -> dict:
     """PowerPointベース文書の3段階要約処理
-    
+
     3段階処理：
     1. 10ページずつタイトル抽出・スコアリング（LLM）
     2. 最高スコアスライド選択（非LLM）
     3. 要約作成（LLM）
-    
+
     Args:
         texts: PDFから抽出されたページ別テキストのリスト
-        
+
     Returns:
         dict: {"title": str, "summary": str}
     """
     llm = Model().llm()
-    
+
     # ステップ1: タイトル抽出
     title = extract_powerpoint_title(texts)
     logger.info(f"このスライドのタイトルは「{title.replace('\n', '\\n')}」です")
-    
+
     # ステップ2: 指定ページ数ずつスライドタイトル抽出・スコアリング
     pages_per_batch = 20  # 一度に処理するページ数
     total_pages = len(texts)
@@ -908,7 +908,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
             all_slides.extend(slide_analysis.slides)
         except Exception as e:
             logger.warning(f"⚠️ スライド分析に失敗（ページ{start_page+1}-{end_page+1}）: {e}")
-    
+
     # ステップ3: 最高スコアのスライドと文書タイトル関連スライドを選択
     if not all_slides:
         # スライドが取得できない場合は全文を使用
@@ -916,7 +916,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         page_info = f"全{total_pages}ページ（スライド分析失敗）"
         selected_slide_info = "分析失敗のため全ページ使用"
 
-        logger.info(f"すべてのスライドを使って要約します")
+        logger.info("すべてのスライドを使って要約します")
     else:
         # スコアでソートし、最高スコアのスライドを選択
         sorted_slides = sorted(all_slides, key=lambda x: x.score, reverse=True)
@@ -926,7 +926,7 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
         # 文書タイトルに関連する重要なスライドも追加選択（4点以上で文書タイトルと関連性が高いもの）
         # 基本的なキーワードリスト
         basic_keywords = ["概要", "基本方針", "ポイント", "要求", "予算", "全体", "総額", "方針", "要点", "まとめ"]
-        
+
         # 文書タイトルから特定のキーワードを抽出
         title_lower = title.lower()
         title_keywords = []
@@ -936,21 +936,21 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
             title_keywords.extend(["国土強靱化", "防災", "強靱化"])
         if "施策" in title_lower or "政策" in title_lower:
             title_keywords.extend(["施策", "政策", "取組", "対策"])
-        
+
         # 全キーワードを結合
         all_keywords = basic_keywords + title_keywords
         title_related_slides = []
-        
+
         for slide in sorted_slides:
             if slide.score >= 4 and slide not in top_slides:
                 # タイトルとの関連性をチェック
                 slide_title_lower = slide.title.lower()
                 if any(keyword in slide_title_lower for keyword in all_keywords):
                     title_related_slides.append(slide)
-        
+
         # 最高スコアスライドと文書タイトル関連スライドを結合
         all_selected_slides = top_slides + title_related_slides[:2]  # 文書タイトル関連は最大2つまで
-        
+
         # ページ番号順にソート
         all_selected_slides = sorted(all_selected_slides, key=lambda x: x.page)
 
@@ -962,11 +962,11 @@ def powerpoint_based_summarize(texts: list[str]) -> dict:
             page_idx = slide.page - 1  # 1ベースから0ベースに変換
             if 0 <= page_idx < len(texts):
                 selected_texts.append(f"--- ページ {slide.page} ({slide.title}) ---\n{texts[page_idx]}")
-        
+
         merged_content = "\n\n".join(selected_texts)
         page_info = f"最高スコア{max_score}点+文書関連スライド計{len(all_selected_slides)}枚（総{total_pages}ページ中）"
-        selected_slide_info = f"選択されたスライド: " + ", ".join([f"ページ{s.page}({s.title})" for s in all_selected_slides])
-    
+        selected_slide_info = "選択されたスライド: " + ", ".join([f"ページ{s.page}({s.title})" for s in all_selected_slides])
+
     # ステップ4: 要約作成
     powerpoint_summary_prompt = PromptTemplate(
         input_variables=["title", "content", "page_info", "selected_slide_info"],
@@ -1006,7 +1006,7 @@ PowerPoint資料の内容に応じて、以下から適切な項目を選択し�
 - 提供されたスライドの内容のみ使用
 - 推測や補完は行わない
         """)
-    
+
     chain = powerpoint_summary_prompt | llm
     result = chain.invoke({
         "title": title,
@@ -1014,14 +1014,14 @@ PowerPoint資料の内容に応じて、以下から適切な項目を選択し�
         "page_info": page_info,
         "selected_slide_info": selected_slide_info
     })
-    
+
     return {"title": title, "summary": result.content.strip()}
 
 
 def traditional_summarize(texts: list[str]) -> str:
     """従来の全文要約処理"""
     llm = Model().llm()
-    
+
     # テキストを直接ドキュメントに変換
     docs = [Document(page_content=t) for t in texts]
 
@@ -1036,7 +1036,7 @@ def traditional_summarize(texts: list[str]) -> str:
 
 **判定基準：**
 - 「表紙・タイトルページ」: タイトル、組織名、日付のみで実質的な内容が少ない
-- 「目次・概要」: 章立てや概要のみで詳細な説明がない  
+- 「目次・概要」: 章立てや概要のみで詳細な説明がない
 - 「本文・詳細資料」: 具体的な内容、説明、データ、議論等が含まれている
 
 **判定結果**: [表紙・タイトルページ/目次・概要/本文・詳細資料]
@@ -1137,8 +1137,8 @@ def document_summarizer(state: State) -> State:
 
     logger.info("🟢 文書を要約...")
 
-    llm = Model().llm()
-    parser = JsonOutputParser(pydantic_object=Summary)
+    Model().llm()
+    JsonOutputParser(pydantic_object=Summary)
 
     # 現在のインデックスを取得
     current_index = state.get("target_report_index", 0)
@@ -1174,7 +1174,7 @@ def document_summarizer(state: State) -> State:
         if not texts:
             logger.warning(f"⚠️ PDFの読み込みに失敗しました: {url}")
             summary_obj = Summary(url=url, name=name, content="")
-            
+
             message = AIMessage(content=f"""
 ## 個別文書要約結果（読み込み失敗）
 
@@ -1198,7 +1198,7 @@ def document_summarizer(state: State) -> State:
         logger.info(f"{name}をテキスト化しました({len(texts)}ページ)")
         # 文書タイプを判定
         doc_type, doc_reason, evidence_text, detection_detail = detect_document_type(texts)
-        
+
         # タイプ別要約処理
         result: dict | None = None
         if doc_type == "word":

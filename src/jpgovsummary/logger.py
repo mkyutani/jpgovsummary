@@ -1,26 +1,24 @@
 import logging
 import os
 import sys
-from typing import Dict, Optional
 
 
-
-def parse_ls_colors(ls_colors: Optional[str] = None) -> Dict[str, str]:
+def parse_ls_colors(ls_colors: str | None = None) -> dict[str, str]:
     """
     LS_COLORS環境変数をパースしてディクショナリに変換
-    
+
     Args:
         ls_colors: LS_COLORS文字列（Noneの場合は環境変数から取得）
-    
+
     Returns:
         キーと色コードのディクショナリ
     """
     if ls_colors is None:
         ls_colors = os.environ.get('LS_COLORS', '')
-    
+
     if not ls_colors:
         return get_default_colors()
-    
+
     colors = {}
     # コロンで分割してkey=value形式をパース
     for item in ls_colors.split(':'):
@@ -29,17 +27,17 @@ def parse_ls_colors(ls_colors: Optional[str] = None) -> Dict[str, str]:
             colors[key] = value
         elif item:  # 拡張子など
             colors[item] = '01;31'  # デフォルト色
-    
+
     # デフォルト値でフォールバック
     default_colors = get_default_colors()
     for key, value in default_colors.items():
         if key not in colors:
             colors[key] = value
-    
+
     return colors
 
 
-def get_default_colors() -> Dict[str, str]:
+def get_default_colors() -> dict[str, str]:
     """デフォルトの色設定"""
     return {
         'rs': '0',           # リセット
@@ -60,10 +58,10 @@ def get_default_colors() -> Dict[str, str]:
 def color_code_to_ansi(color_code: str) -> str:
     """
     LS_COLORSの色コード（例：01;34）をANSIエスケープシーケンスに変換
-    
+
     Args:
         color_code: LS_COLORSの色コード（例：'01;34'）
-    
+
     Returns:
         ANSIエスケープシーケンス（例：'\033[01;34m'）
     """
@@ -79,11 +77,11 @@ def get_reset_code() -> str:
 
 class LSColorFormatter(logging.Formatter):
     """LS_COLORS対応のカラーフォーマッター"""
-    
+
     def __init__(self, fmt=None):
         super().__init__(fmt)
         self.colors = parse_ls_colors()
-        
+
         # ログレベルとLS_COLORSキーのマッピング
         self.level_mapping = {
             logging.DEBUG: 'fi',      # 通常ファイル（デフォルト）
@@ -92,13 +90,13 @@ class LSColorFormatter(logging.Formatter):
             logging.ERROR: 'or',      # 孤立リンク（赤背景）
             logging.CRITICAL: 'mi',   # 存在しないファイル（赤背景・点滅）
         }
-        
+
         # 進行状況表示用の特別な絵文字（緑色・改行付き）
         self.progress_emoji = '🟢'
-        
+
         # jpgovsummaryメッセージの絵文字リスト
         self.jpgovsummary_emojis = ['✅', '🔍', '📄', '🔗', '🔄', '💬']
-    
+
     def format(self, record):
         # 外部ライブラリのログの場合は、時刻なしでレベル付きで表示
         if record.name != "jpgovsummary":
@@ -110,10 +108,10 @@ class LSColorFormatter(logging.Formatter):
         else:
             # jpgovsummaryのメッセージは従来通り
             msg = super().format(record)
-        
+
         # ログレベルベースの色選択
         color_key = self.level_mapping.get(record.levelno, 'fi')
-        
+
         # 進行状況絵文字の特別処理（改行付きだが色はデフォルト）
         if self.progress_emoji in msg:
             prefix = "\n\n"
@@ -125,7 +123,7 @@ class LSColorFormatter(logging.Formatter):
                 has_emoji = any(emoji in msg for emoji in self.jpgovsummary_emojis)
                 if not has_emoji and record.levelno == logging.INFO:
                     color_key = '*~'  # バックアップファイル色（薄いグレー）
-        
+
         # 色コードを適用
         color_code = self.colors.get(color_key, '')
         if color_code:
@@ -157,14 +155,14 @@ def set_batch_mode(batch: bool = False):
 def configure_external_loggers(batch_mode: bool = False):
     """
     外部ライブラリのログレベルを設定
-    
+
     Args:
         batch_mode: バッチモードの場合True（INFOも出力）、
                    interactiveモードの場合False（WARNING以上のみ）
     """
     external_loggers = [
         'docling',
-        'docling.document_converter', 
+        'docling.document_converter',
         'docling.datamodel',
         'docling_core',
         'requests',
@@ -175,10 +173,10 @@ def configure_external_loggers(batch_mode: bool = False):
         'openai._base_client',
         'httpcore',
     ]
-    
+
     # バッチモードではINFO、interactiveモードではWARNING以上
     log_level = logging.INFO if batch_mode else logging.WARNING
-    
+
     for logger_name in external_loggers:
         external_logger = logging.getLogger(logger_name)
         external_logger.setLevel(log_level)

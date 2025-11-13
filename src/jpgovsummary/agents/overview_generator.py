@@ -1,10 +1,10 @@
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import (
     AIMessagePromptTemplate,
     ChatPromptTemplate,
     MessagesPlaceholder,
     SystemMessagePromptTemplate,
 )
-from langchain_core.messages import HumanMessage, AIMessage
 
 from .. import Config, Model, State, logger
 
@@ -194,32 +194,32 @@ def overview_generator(state: State) -> dict:
 - 「では」の重複を避けること：文書名に既に「では」が含まれている場合は追加しない
 - タイトル、会議名、文書名は必ず「」（鍵括弧）で囲むこと
     """)
-    
+
     # メインコンテンツを明示的にLLMに渡す
     content_message = f"以下のメインコンテンツを分析して要約を作成してください：\n\n{main_content}"
-    
+
     prompt = ChatPromptTemplate.from_messages(
         [system_prompt, assistant_prompt, MessagesPlaceholder(variable_name="messages")]
     )
     chain = prompt | llm
-    
+
     # メインコンテンツを含むメッセージを作成
     messages = [HumanMessage(content=content_message)]
-    
+
     result = chain.invoke({"messages": messages}, Config().get())
-    
+
     # 議事録検出フラグのチェックと処理
     meeting_minutes_detected = "[DETAILED_MINUTES_DETECTED]" in result.content
     document_page_detected = "[DOCUMENT_PAGE_DETECTED]" in result.content
-    
+
     # 改行をエスケープ
     overview = result.content.replace("\n", "\\n")
 
     logger.info(f"概要は「{result.content.replace('\n', '\\n')}」です")
     if meeting_minutes_detected:
-        logger.info(f"対象は議事録を含んでいます")
+        logger.info("対象は議事録を含んでいます")
     if document_page_detected:
-        logger.info(f"対象は文書ページです")
+        logger.info("対象は文書ページです")
 
     # 会議かどうかを判定
     # 議事録が検出されている場合は確実に会議
@@ -257,7 +257,7 @@ def overview_generator(state: State) -> dict:
     logger.info(f"✅ 概要を作成しました: {overview}")
 
     return {
-        "overview": overview, 
+        "overview": overview,
         "messages": [system_message, detailed_message],
         "meeting_minutes_detected": meeting_minutes_detected,
         "is_meeting_page": is_meeting
