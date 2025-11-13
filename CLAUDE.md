@@ -10,12 +10,20 @@ jpgovsummary is a Python tool that automatically summarizes Japanese government 
 
 ### Development Setup
 ```bash
-# Install dependencies
+# IMPORTANT: Always activate the virtual environment first
+source .venv/bin/activate
+
+# Install dependencies (run this after activating)
 poetry install
 
 # Run the tool (development mode)
+jpgovsummary <URL_or_FILE_PATH>
+
+# Or use poetry run (works without activation)
 poetry run jpgovsummary <URL_or_FILE_PATH>
 ```
+
+**Note:** In devcontainer environments, always activate `.venv` before running `poetry install` to ensure the project is correctly installed in the local virtual environment.
 
 ### Running the Tool
 ```bash
