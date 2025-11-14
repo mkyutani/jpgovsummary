@@ -23,9 +23,6 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "poetry install && echo '\n# Auto-activate Poetry virtual environment for jpgovwatcher project\nif [ -d \"/workspaces/jpgovsummary/.venv\" ]; then\n    source /workspaces/jpgovsummary/.venv/bin/activate\nfi' >> ~/.bashrc",
-
 	// Configure tool-specific properties.
 	"customizations": {
 		"vscode": {
