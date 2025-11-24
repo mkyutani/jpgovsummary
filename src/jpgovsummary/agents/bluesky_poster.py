@@ -26,6 +26,7 @@ def bluesky_poster(state: State) -> State:
     # 最終要約とURLを取得
     final_summary = state.get("final_review_summary") or state.get("final_summary", "")
     url = state.get("url", "")
+    batch = state.get("batch", False)
 
     if not final_summary:
         logger.warning("⚠️ Bluesky投稿用の最終要約がありません")
@@ -37,7 +38,7 @@ def bluesky_poster(state: State) -> State:
         post_content = _format_bluesky_content(final_summary, url)
 
         # ユーザーに投稿意思を確認
-        if _ask_user_for_bluesky_posting(final_summary, url, post_content):
+        if _ask_user_for_bluesky_posting(final_summary, url, post_content, batch):
             # MCPClientを使ってBluesky投稿を実行
             post_result = asyncio.run(_post_to_bluesky_via_mcp(post_content))
 
@@ -277,11 +278,17 @@ def _format_bluesky_content(summary: str, url: str) -> str:
         return summary
 
 
-def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str) -> bool:
+def _ask_user_for_bluesky_posting(summary: str, url: str, post_content: str, batch: bool = False) -> bool:
     """
     ユーザーにBluesky投稿の意思を確認（シンプル版）
     ^C: false (キャンセル), ^D: true (yes)
+    バッチモードの場合は自動的にtrueを返す
     """
+    # バッチモードの場合は自動承認
+    if batch:
+        logger.info("バッチモードのため自動的にBlueskyに投稿します")
+        return True
+
     # シンプルなY/n確認
     while True:
         try:
