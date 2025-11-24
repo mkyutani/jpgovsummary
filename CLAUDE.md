@@ -46,6 +46,22 @@ poetry run jpgovsummary <URL> --model gpt-4o
 poetry run jpgovsummary <URL> --skip-bluesky-posting
 ```
 
+### Helper Scripts
+```bash
+# Batch mode execution from outside devcontainer
+# This script runs jpgovsummary with --batch flag inside the devcontainer
+./scripts/batch-summary.sh <URL_or_FILE_PATH>
+
+# Examples
+./scripts/batch-summary.sh https://www.kantei.go.jp/jp/singi/example/
+./scripts/batch-summary.sh /path/to/document.pdf
+```
+
+**Note:** The batch-summary.sh script automatically:
+- Executes the tool inside the devcontainer
+- Runs in batch mode (no human interaction)
+- Posts to Bluesky automatically (if SSKY_USER is configured)
+
 ### Code Quality
 ```bash
 # Run linting

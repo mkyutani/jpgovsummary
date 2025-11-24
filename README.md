@@ -101,6 +101,21 @@ jpgovsummary document.pdf --model gpt-4o
 jpgovsummary https://www.kantei.go.jp/jp/singi/example/ --overview-only
 ```
 
+### Devcontainer環境での使用
+
+Devcontainer外からバッチモードで実行するための便利なスクリプトを提供しています:
+
+```bash
+# スクリプトの使用
+./scripts/batch-summary.sh <URL_or_FILE_PATH>
+
+# 例
+./scripts/batch-summary.sh https://www.kantei.go.jp/jp/singi/example/
+./scripts/batch-summary.sh /path/to/document.pdf
+```
+
+このスクリプトは `--batch` フラグ付きで実行されるため、人的介入なしで自動的に処理され、Blueskyにも自動投稿されます。
+
 ## 出力例
 
 ツールの最終出力は非常にシンプルです：
