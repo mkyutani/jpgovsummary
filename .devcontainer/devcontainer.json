@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "jpgovwatcher",
+	"name": "jpgovsummary",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/python:2-3.12-bullseye",
 	"features": {
@@ -15,7 +15,7 @@
 	// Load environment variables from .env.local file (if it exists)
 	// Create .env.local from .env.local.sample before first use
 	"initializeCommand": "bash -c 'if [ ! -f .env.local ]; then cp .env.local.sample .env.local; fi'",
-	"runArgs": ["--env-file", "${localWorkspaceFolder}/.env.local"],
+	"runArgs": ["--name", "jpgovsummary-devcontainer", "--env-file", "${localWorkspaceFolder}/.env.local"],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
