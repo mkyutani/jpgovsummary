@@ -1,0 +1,20 @@
+services:
+  jpgovsummary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jpgovsummary:latest
+    container_name: jpgovsummary
+    env_file:
+      - .env.local
+    volumes:
+      # Mount current directory for file input/output
+      - .:/workspace
+      # Mount Docker socket for MCP server (ssky-mcp) access
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    # Override entrypoint for interactive use
+    entrypoint: []
+    command: ["sleep", "infinity"]

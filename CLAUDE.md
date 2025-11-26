@@ -8,7 +8,25 @@ jpgovsummary is a Python tool that automatically summarizes Japanese government 
 
 ## Common Commands
 
-### Development Setup
+### Docker Compose Setup (Production)
+```bash
+# Build and start the service
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop the service
+docker compose down
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Run jpgovsummary interactively
+docker compose exec jpgovsummary jpgovsummary <URL_or_FILE_PATH>
+```
+
+### Development Setup (Local/Devcontainer)
 ```bash
 # IMPORTANT: Always activate the virtual environment first
 source .venv/bin/activate
@@ -47,6 +65,24 @@ poetry run jpgovsummary <URL> --skip-bluesky-posting
 ```
 
 ### Helper Scripts
+
+#### Production (Docker Compose)
+```bash
+# Batch mode execution using docker-compose
+./scripts/compose-batch-summary.sh <URL_or_FILE_PATH>
+
+# Examples
+./scripts/compose-batch-summary.sh https://www.kantei.go.jp/jp/singi/example/
+./scripts/compose-batch-summary.sh /path/to/document.pdf
+```
+
+**Note:** The compose-batch-summary.sh script automatically:
+- Starts the docker-compose service if not running
+- Executes jpgovsummary inside the container
+- Runs in batch mode (no human interaction)
+- Posts to Bluesky automatically (if SSKY_USER is configured)
+
+#### Development (Devcontainer)
 ```bash
 # Batch mode execution from outside devcontainer
 # This script runs jpgovsummary with --batch flag inside the devcontainer
@@ -57,10 +93,9 @@ poetry run jpgovsummary <URL> --skip-bluesky-posting
 ./scripts/devcontainer-batch-summary.sh /path/to/document.pdf
 ```
 
-**Note:** The devcontainer-batch-summary.sh script automatically:
-- Executes the tool inside the devcontainer
-- Runs in batch mode (no human interaction)
-- Posts to Bluesky automatically (if SSKY_USER is configured)
+**Note:** The devcontainer-batch-summary.sh script requires:
+- VSCode devcontainer to be running
+- Container name: jpgovsummary-devcontainer
 
 ### Code Quality
 ```bash
