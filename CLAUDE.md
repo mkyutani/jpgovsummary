@@ -69,14 +69,14 @@ poetry run jpgovsummary <URL> --skip-bluesky-posting
 #### Production (Docker Compose)
 ```bash
 # Batch mode execution using docker-compose
-./scripts/compose-batch-summary.sh <URL_or_FILE_PATH>
+./scripts/compose-summary.sh <URL_or_FILE_PATH>
 
 # Examples
-./scripts/compose-batch-summary.sh https://www.kantei.go.jp/jp/singi/example/
-./scripts/compose-batch-summary.sh /path/to/document.pdf
+./scripts/compose-summary.sh https://www.kantei.go.jp/jp/singi/example/
+./scripts/compose-summary.sh /path/to/document.pdf
 ```
 
-**Note:** The compose-batch-summary.sh script automatically:
+**Note:** The compose-summary.sh script automatically:
 - Starts the docker-compose service if not running
 - Executes jpgovsummary inside the container
 - Runs in batch mode (no human interaction)
@@ -86,14 +86,14 @@ poetry run jpgovsummary <URL> --skip-bluesky-posting
 ```bash
 # Batch mode execution from outside devcontainer
 # This script runs jpgovsummary with --batch flag inside the devcontainer
-./scripts/devcontainer-batch-summary.sh <URL_or_FILE_PATH>
+./scripts/devcontainer-summary.sh <URL_or_FILE_PATH>
 
 # Examples
-./scripts/devcontainer-batch-summary.sh https://www.kantei.go.jp/jp/singi/example/
-./scripts/devcontainer-batch-summary.sh /path/to/document.pdf
+./scripts/devcontainer-summary.sh https://www.kantei.go.jp/jp/singi/example/
+./scripts/devcontainer-summary.sh /path/to/document.pdf
 ```
 
-**Note:** The devcontainer-batch-summary.sh script requires:
+**Note:** The devcontainer-summary.sh script requires:
 - VSCode devcontainer to be running
 - Container name: jpgovsummary-devcontainer
 
