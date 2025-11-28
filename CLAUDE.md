@@ -164,7 +164,8 @@ Two key conditional functions control workflow branching:
 
 ### Model and Configuration
 
-- **Model class** ([model.py](src/jpgovsummary/model.py)): Singleton pattern for OpenAI model initialization, defaults to `OPENAI_MODEL_NAME` env var
+- **Model class** ([model.py](src/jpgovsummary/model.py)): Singleton pattern for LLM provider initialization with multi-provider support
+- **Provider classes** ([providers/](src/jpgovsummary/providers/)): Abstraction layer supporting OpenAI, Anthropic, Gemini, and Ollama
 - **Config class** ([config.py](src/jpgovsummary/config.py)): Thread-based configuration for LangGraph checkpointing
 
 ### Tools
@@ -176,11 +177,34 @@ Located in [src/jpgovsummary/tools/](src/jpgovsummary/tools/):
 
 ## Environment Variables
 
-Required:
-- `OPENAI_API_KEY` - OpenAI API key for text generation
-- `OPENAI_MODEL_NAME` - OpenAI model to use (can be overridden via --model flag)
+### LLM Provider Selection
 
-Optional:
+Choose your LLM provider by setting `LLM_PROVIDER`:
+- `openai` (default) - OpenAI GPT models
+- `anthropic` - Anthropic Claude models
+- `gemini` - Google Gemini models
+- `ollama` - Local Ollama models
+
+### Required Variables (based on provider)
+
+**For OpenAI (LLM_PROVIDER=openai):**
+- `OPENAI_API_KEY` - OpenAI API key
+- `OPENAI_MODEL_NAME` - Model name (e.g., `gpt-4o`, `gpt-4o-mini`)
+
+**For Anthropic (LLM_PROVIDER=anthropic):**
+- `ANTHROPIC_API_KEY` - Anthropic API key
+- `ANTHROPIC_MODEL_NAME` - Model name (e.g., `claude-sonnet-4-5-20250929`)
+
+**For Gemini (LLM_PROVIDER=gemini):**
+- `GOOGLE_API_KEY` - Google API key
+- `GEMINI_MODEL_NAME` - Model name (e.g., `gemini-2.0-flash-exp`)
+
+**For Ollama (LLM_PROVIDER=ollama):**
+- `OLLAMA_BASE_URL` - Ollama server URL (default: `http://localhost:11434`)
+- `OLLAMA_MODEL_NAME` - Model name (e.g., `llama3.1`)
+
+### Optional Variables
+
 - `SSKY_USER` - Bluesky credentials in format "handle.bsky.social:app-password" for posting
 
 Use `.env` file or export directly. See `.env.local.sample` for template.

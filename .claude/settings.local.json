@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(source:*)",
+      "Bash(poetry run ruff:*)",
+      "Bash(poetry install:*)",
+      "Bash(poetry lock:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
