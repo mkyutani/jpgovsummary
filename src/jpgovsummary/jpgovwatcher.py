@@ -124,6 +124,33 @@ def should_continue_target_reports(state: State) -> str | bool:
     return "summary_integrator"
 
 
+def should_post_to_bluesky(state: State) -> str:
+    """
+    summary_finalizerの後にBluesky投稿を行うかどうかを判定
+
+    以下の場合は投稿をスキップ:
+    - skip_bluesky_postingフラグが立っている
+    - final_review_summaryまたはfinal_summaryにエラーメッセージが含まれている
+    """
+    # skip_bluesky_postingフラグのチェック
+    if state.get("skip_bluesky_posting", False):
+        return END
+
+    # 最終要約を取得
+    final_summary = state.get("final_review_summary") or state.get("final_summary", "")
+
+    # エラーメッセージが含まれている場合は投稿しない
+    error_messages = [
+        "文書の要約がないため要約を統合できませんでした",
+        "要約の統合中にエラーが発生しました"
+    ]
+    if any(error_msg in final_summary for error_msg in error_messages):
+        return END
+
+    # 正常な要約がある場合のみBluesky投稿へ
+    return "bluesky_poster"
+
+
 def main() -> int:
     setup()
 
@@ -237,14 +264,16 @@ def main() -> int:
         # summary_integratorの後は常にsummary_finalizerへ
         graph.add_edge("summary_integrator", "summary_finalizer")
 
-        # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
-        if args.skip_bluesky_posting:
-            # Bluesky投稿をスキップする場合は直接終了
-            graph.add_edge("summary_finalizer", END)
-        else:
-            # Bluesky投稿を実行する場合
-            graph.add_edge("summary_finalizer", "bluesky_poster")
-            graph.add_edge("bluesky_poster", END)
+        # summary_finalizerの後の処理（条件分岐でBluesky投稿の有無を判定）
+        graph.add_conditional_edges(
+            "summary_finalizer",
+            should_post_to_bluesky,
+            {
+                "bluesky_poster": "bluesky_poster",
+                END: END,
+            },
+        )
+        graph.add_edge("bluesky_poster", END)
     else:  # pdf
         # PDFファイルの場合は直接document_summarizerで処理
         initial_message = {
@@ -267,14 +296,16 @@ def main() -> int:
         graph.add_edge("document_summarizer", "summary_integrator")
         graph.add_edge("summary_integrator", "summary_finalizer")
 
-        # summary_finalizerの後の処理（Bluesky投稿の有無で分岐）
-        if args.skip_bluesky_posting:
-            # Bluesky投稿をスキップする場合は直接終了
-            graph.add_edge("summary_finalizer", END)
-        else:
-            # Bluesky投稿を実行する場合
-            graph.add_edge("summary_finalizer", "bluesky_poster")
-            graph.add_edge("bluesky_poster", END)
+        # summary_finalizerの後の処理（条件分岐でBluesky投稿の有無を判定）
+        graph.add_conditional_edges(
+            "summary_finalizer",
+            should_post_to_bluesky,
+            {
+                "bluesky_poster": "bluesky_poster",
+                END: END,
+            },
+        )
+        graph.add_edge("bluesky_poster", END)
 
     memory = MemorySaver()
     graph = graph.compile(checkpointer=memory)
