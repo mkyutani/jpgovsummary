@@ -84,6 +84,21 @@ def setup() -> None:
     sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
 
 
+def should_continue_from_main_content_extractor(state: State) -> str:
+    """
+    main_content_extractorの後の条件分岐
+    メインコンテンツの抽出に失敗した場合はエラー終了
+    """
+    main_content = state.get("main_content", "")
+
+    # HTMLパースエラーが検出された場合は終了
+    if "[HTML_PARSING_ERROR]" in main_content:
+        return END
+
+    # 正常な場合は overview_generator へ
+    return "overview_generator"
+
+
 def should_process_additional_files(state: State) -> str:
     """
     overview_generatorの後の条件分岐
@@ -225,7 +240,16 @@ def main() -> int:
             return 1
 
         graph.add_edge(START, "main_content_extractor")
-        graph.add_edge("main_content_extractor", "overview_generator")
+
+        # main_content_extractorの後の条件分岐を追加
+        graph.add_conditional_edges(
+            "main_content_extractor",
+            should_continue_from_main_content_extractor,
+            {
+                "overview_generator": "overview_generator",
+                END: END,
+            },
+        )
 
         # overview_generatorの後の処理（条件分岐で制御）
         graph.add_conditional_edges(
@@ -318,7 +342,13 @@ def main() -> int:
     final_review_summary = final_state.values.get("final_review_summary", "")
     final_summary = final_state.values.get("final_summary", "")
     overview = final_state.values.get("overview", "")
+    main_content = final_state.values.get("main_content", "")
     url = final_state.values.get("url", "URL")
+
+    # HTMLパースエラーでの終了をチェック
+    if "[HTML_PARSING_ERROR]" in main_content:
+        print("Error: Failed to extract main content from HTML", file=sys.stderr)
+        return 1
 
     # Use the reviewed summary if available, otherwise fall back to original logic
     if final_review_summary:

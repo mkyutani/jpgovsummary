@@ -94,11 +94,19 @@ def main_content_extractor(state: State) -> dict:
                     result = fixed_result
                 else:
                     logger.error("❌ HTML正規化後もメインコンテンツの抽出に失敗しました")
+                    logger.error("処理を中断します")
 
             except Exception as e:
                 logger.error(f"❌ HTML自動修正中にエラーが発生しました: {e}")
+                logger.error("処理を中断します")
         else:
             logger.warning("⚠️ URLが見つからないため、HTML自動修正をスキップします")
+            logger.error("処理を中断します")
+
+    # HTMLパースエラーチェック
+    if "[HTML_PARSING_ERROR]" in result.content:
+        logger.error("❌ HTMLのメインコンテンツ抽出に失敗しました")
+        return {"main_content": result.content, "messages": [result]}
 
     logger.info(f"メインコンテンツ: {result.content.replace('\n', '\\n').strip()}")
     logger.info(f"✅ {len(result.content)}文字のメインコンテンツを抽出しました")
