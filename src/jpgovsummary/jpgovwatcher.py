@@ -194,6 +194,9 @@ def main() -> int:
         print("No meeting URL or file path provided", file=sys.stderr)
         return 1
 
+    # Strip whitespace and control characters from URL/file path
+    args.url = args.url.strip()
+
     # Check page type
     page_type = get_page_type(args.url)
     if page_type not in ["html", "pdf"]:
