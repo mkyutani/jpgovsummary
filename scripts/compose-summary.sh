@@ -18,7 +18,7 @@ docker compose up -d
 # Process each URL/file path in order
 for target in "$@"; do
     echo "Processing: $target" >&2
-    docker compose exec jpgovsummary jpgovsummary --batch "$target"
+    docker compose exec -T jpgovsummary jpgovsummary --batch "$target"
 
     # Check exit status
     if [ $? -ne 0 ]; then
