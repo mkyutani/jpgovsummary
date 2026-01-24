@@ -15,6 +15,7 @@ with its own isolated state, enabling parallel execution and better
 error isolation.
 """
 
+from jpgovsummary.subagents.document_type_detector import DocumentTypeDetector
 from jpgovsummary.subagents.powerpoint_summarizer import PowerPointSummarizer
 
-__all__ = ["PowerPointSummarizer"]
+__all__ = ["DocumentTypeDetector", "PowerPointSummarizer"]
