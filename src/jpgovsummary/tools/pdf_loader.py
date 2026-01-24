@@ -9,6 +9,23 @@ from .. import logger
 from ..utils import get_local_file_path, is_local_file, validate_local_file
 
 
+@tool
+def load_pdf_document(url: str) -> list[str]:
+    """
+    Load PDF and extract text pages.
+
+    This is the Plan-Action compatible tool for PDF loading.
+    Use this in action executors for structured tool calling.
+
+    Args:
+        url: PDF file URL or local file path
+
+    Returns:
+        List of text strings, one per page
+    """
+    return load_pdf_as_text(url)
+
+
 def load_pdf_as_text(url: str) -> list[str]:
     """
     PDFファイルをダウンロードまたはローカルファイルから読み込んでテキストを抽出する

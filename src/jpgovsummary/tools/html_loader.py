@@ -6,6 +6,7 @@ from docling.datamodel.base_models import InputFormat
 from docling.document_converter import DocumentConverter
 from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
 from docling_core.types.doc.document import DoclingDocument
+from langchain_core.tools import tool
 from lxml import etree, html
 
 from .. import logger
@@ -319,6 +320,23 @@ def _normalize_and_convert_html(html_content: str | bytes, headers: dict = None)
     enhanced_result = custom_serializer.serialize()
 
     return enhanced_result.text
+
+
+@tool
+def load_html_document(url: str) -> str:
+    """
+    Load HTML page and convert to markdown.
+
+    This is the Plan-Action compatible tool for HTML loading.
+    Use this in action executors for structured tool calling.
+
+    Args:
+        url: HTML page URL or local file path
+
+    Returns:
+        Markdown string of the page content
+    """
+    return load_html_as_markdown(url)
 
 
 def load_html_as_markdown(url: str) -> str:
