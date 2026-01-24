@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 
 from .. import Model, State, logger
-from .bluesky_poster import MAX_CHARS_BLUESKY_SHORT, MIN_CHARS_SUMMARY
+from ..config import MAX_CHARS_SUMMARY
 
 
 class QualityEvaluation(NamedTuple):
@@ -65,14 +65,11 @@ def summary_finalizer(state: State) -> State:
             _display_current_summary(current_summary, url=url)
 
             # Check character limit before approval
-            total_chars = len(current_summary) + len(url) + 1
-            if total_chars > MAX_CHARS_BLUESKY_SHORT:
-                # Simple character limit logic: shorten to 1000 chars
-                target_total_chars = MAX_CHARS_BLUESKY_SHORT
-
-                logger.warning(f"⚠️ 要約が{total_chars}文字で長すぎるため{target_total_chars}文字以内に再生成します")
+            if len(current_summary) > MAX_CHARS_SUMMARY:
+                logger.warning(f"⚠️ 要約が{len(current_summary)}文字で長すぎるため{MAX_CHARS_SUMMARY}文字以内に再生成します")
+                original_len = len(current_summary)
                 shortened_summary = _generate_shortened_summary(
-                    llm, current_summary, overview, target_report_summaries, url, is_meeting_page, target_total_chars
+                    llm, current_summary, overview, target_report_summaries, url, is_meeting_page, MAX_CHARS_SUMMARY
                 )
 
                 # Update the summary
@@ -84,7 +81,7 @@ def summary_finalizer(state: State) -> State:
                     final_summary = current_summary
 
                 review_session["improvements"].append({
-                    "request": f"Auto-shorten from {total_chars} to fit {target_total_chars} char limit",
+                    "request": f"Auto-shorten from {original_len} to fit {MAX_CHARS_SUMMARY} char limit",
                     "result": shortened_summary
                 })
                 continue
@@ -185,8 +182,7 @@ def summary_finalizer(state: State) -> State:
     state["review_session"] = review_session
 
     # Display final confirmed summary
-    total_chars = len(current_summary) + len(url) + 1
-    logger.info(f"✅ 最終調整終了{total_chars}文字({len(current_summary)}+{len(url)}+1)")
+    logger.info(f"✅ 最終調整終了({len(current_summary)}文字)")
     _display_current_summary(current_summary, url=url)
 
     # Update messages with final reviewed summary
@@ -210,9 +206,7 @@ def _generate_improved_summary(llm, current_summary: str, improvement_request: s
             f"【{s.name}】\n{s.content}" for s in summaries if s.content
         ])
 
-    # Calculate max characters based on URL length
-    url_length = len(url)
-    max_chars = max(MIN_CHARS_SUMMARY, MAX_CHARS_BLUESKY_SHORT - url_length - 1)
+    max_chars = MAX_CHARS_SUMMARY
 
     # Handle improvement request
     # 会議 or 文書に応じて表現を変更
@@ -284,9 +278,7 @@ def _generate_shortened_summary(llm, current_summary: str, overview: str, summar
             f"【{s.name}】\n{s.content}" for s in summaries if s.content
         ])
 
-    # Calculate max characters based on URL length
-    url_length = len(url)
-    max_chars = max(50, target_total_chars - url_length - 1)
+    max_chars = target_total_chars
 
     # 会議 or 文書に応じて表現を変更
     subject_type = "会議" if is_meeting_page else "文書"

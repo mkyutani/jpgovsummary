@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 
 from .. import Model, State, logger
-from .bluesky_poster import MAX_CHARS_INTEGRATED_SUMMARY, MIN_CHARS_INTEGRATED
+from ..config import MAX_CHARS_SUMMARY
 
 
 def extract_context_from_messages(messages: list) -> dict:
@@ -106,9 +106,7 @@ def summary_integrator(state: State) -> State:
     # 会議ページかどうかを判定：初期値で設定されたフラグを使用
     is_meeting_page = state.get("is_meeting_page", False)  # デフォルトは個別文書として扱う
 
-    # URLの長さに基づいて動的に文字数制限を計算
-    url_length = len(url)
-    max_chars = max(MIN_CHARS_INTEGRATED, MAX_CHARS_INTEGRATED_SUMMARY - url_length - 1)
+    max_chars = MAX_CHARS_SUMMARY
 
     if not target_report_summaries:
         final_summary = overview if overview else "文書の要約がないため要約を統合できませんでした。"

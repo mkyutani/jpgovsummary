@@ -1,5 +1,8 @@
 from langchain_core.runnables import RunnableConfig
 
+# Character limits for summaries
+MAX_CHARS_SUMMARY = 2000  # Maximum characters for summary
+
 
 class Config:
     config = None
