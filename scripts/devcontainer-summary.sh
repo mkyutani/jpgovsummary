@@ -15,7 +15,7 @@ fi
 # Process each URL/file path in order
 for target in "$@"; do
     echo "Processing: $target" >&2
-    docker exec -it jpgovsummary-devcontainer bash -c "/workspaces/jpgovsummary/.venv/bin/python /workspaces/jpgovsummary/.venv/bin/jpgovsummary --batch '$target'"
+    docker exec -it jpgovsummary-devcontainer bash -l -c "cd /workspaces/jpgovsummary && poetry run jpgovsummary --batch '$target'"
 
     # Check exit status
     if [ $? -ne 0 ]; then

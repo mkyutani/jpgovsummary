@@ -17,6 +17,14 @@
 	"initializeCommand": "bash -c 'if [ ! -f .env.local ]; then cp .env.local.sample .env.local; fi'",
 	"runArgs": ["--name", "jpgovsummary-devcontainer", "--env-file", "${localWorkspaceFolder}/.env.local"],
 
+	// Install dependencies and add venv to PATH
+	"postCreateCommand": "poetry install && echo 'export PATH=/workspaces/jpgovsummary/.venv/bin:$PATH' >> ~/.bashrc",
+
+	// Set PATH to include venv binaries for all processes
+	"remoteEnv": {
+		"PATH": "/workspaces/jpgovsummary/.venv/bin:${containerEnv:PATH}"
+	},
+
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
 
