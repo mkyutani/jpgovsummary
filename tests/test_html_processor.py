@@ -106,8 +106,9 @@ def main():
         print(f"Discovered documents: {len(discovered_docs)} files", file=sys.stderr)
         if discovered_docs:
             print("-" * 80, file=sys.stderr)
-            for i, doc_url in enumerate(discovered_docs, 1):
-                print(f"{i}. {doc_url}", file=sys.stderr)
+            for i, doc in enumerate(discovered_docs, 1):
+                print(f"{i}. [{doc.category}] {doc.name}", file=sys.stderr)
+                print(f"   URL: {doc.url}", file=sys.stderr)
             print("-" * 80, file=sys.stderr)
 
         # Output in simple format (stdout)
@@ -115,9 +116,10 @@ def main():
         print(f"Main content extracted: {bool(main_content)}")
         print(f"Discovered documents: {len(discovered_docs)}")
         if discovered_docs:
-            print("\nDocument URLs:")
-            for doc_url in discovered_docs:
-                print(f"  - {doc_url}")
+            print("\nDocument Details:")
+            for doc in discovered_docs:
+                print(f"  - [{doc.category}] {doc.name}")
+                print(f"    {doc.url}")
 
         return 0
 

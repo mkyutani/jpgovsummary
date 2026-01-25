@@ -53,6 +53,27 @@ class ActionPlan(BaseModel):
 
 
 # ============================================================================
+# Document Discovery Models (v2-specific)
+# ============================================================================
+
+
+class DiscoveredDocument(BaseModel):
+    """Document discovered from HTML content (v2 architecture)."""
+
+    url: str = Field(description="Document URL (absolute path)")
+    name: str = Field(description="Document name/link text")
+    category: str = Field(
+        description="Document category: agenda, minutes, executive_summary, material, reference, participants, seating, disclosure_method, personal_material, other"
+    )
+
+
+class DiscoveredDocumentList(BaseModel):
+    """List of discovered documents from HTML content."""
+
+    documents: list[DiscoveredDocument] = Field(description="List of discovered documents")
+
+
+# ============================================================================
 # Execution Tracking Models
 # ============================================================================
 
@@ -106,7 +127,7 @@ class PlanState(TypedDict):
 
     # Planning outputs
     overview: str | None  # Generated overview/initial summary
-    discovered_documents: list[str] | None  # URLs of related documents found
+    discovered_documents: list[DiscoveredDocument] | None  # Related documents found
     action_plan: ActionPlan | None  # Generated execution plan
 
     # Control flags (inherited from CLI)
@@ -225,7 +246,7 @@ class HTMLProcessorState(TypedDict):
 
     # Output
     main_content: str | None  # Extracted main content (headers/footers removed)
-    discovered_documents: list[str] | None  # URLs of related documents
+    discovered_documents: list[DiscoveredDocument] | None  # Discovered related documents
 
 
 # ============================================================================

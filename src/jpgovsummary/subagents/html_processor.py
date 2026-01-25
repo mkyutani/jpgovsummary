@@ -17,8 +17,8 @@ from langchain_core.prompts import (
 )
 from langgraph.graph import END, StateGraph
 
-from .. import CandidateReportList, Model, logger
-from ..state_v2 import HTMLProcessorState
+from .. import Model, logger
+from ..state_v2 import DiscoveredDocument, DiscoveredDocumentList, HTMLProcessorState
 from ..tools import load_html_as_markdown
 
 
@@ -201,6 +201,9 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
         main_content = result.content.strip()
         logger.info(f"メインコンテンツ抽出完了 ({len(main_content)}文字)")
+        logger.info("-" * 64)
+        logger.info(f"メインコンテンツ： {main_content}")
+        logger.info("-" * 64)
 
         return {"main_content": main_content}
 
@@ -224,51 +227,39 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
         logger.info("関連資料を発見中...")
 
-        parser = JsonOutputParser(pydantic_object=CandidateReportList)
+        parser = JsonOutputParser(pydantic_object=DiscoveredDocumentList)
 
         system_prompt = SystemMessagePromptTemplate.from_template(
             """あなたはマークダウンから関連資料のリンクを抽出する専門家です。
 
 # 役割
-会議ページのメインコンテンツから、要約対象となる関連資料（PDF、Word文書など）を
-正確に特定し、不要なリンク（ナビゲーション、外部サイトなど）を除外してください。
+会議ページのメインコンテンツから、要約対象となる関連資料(PDFのみ)を正確に特定てください。
 
 # 判定手順
 
-ステップ1: すべてのリンクを抽出する
+ステップ1: すべてのPDFリンクを抽出する
 - マークダウン内のすべてのリンクを漏れなく抽出
 - リンク先URLとリンクテキストを取得
 
-ステップ2: 各リンクを判定する
-以下の5つの基準で順番に確認：
+ステップ2: 各リンクのカテゴリを判定する
 
-**基準1: 関連資料か？**
-✅ 以下は関連資料：
-- 会議の議事録、報告書、配付資料
-- とりまとめの本文・概要
-- 構成員一覧、目次、索引
-- 案内・お知らせ・募集の本文
+- 以下のいずれかに分類する
+    - `agenda`: 議事次第
+    - `minutes`: 議事録、議事要旨
+    - `executive_summary`: とりまとめ、概要、Executive Summary
+    - `material`: 資料X、資料X-X
+    - `reference`: 参考資料
+    - `participants`: 委員名簿、出席者名簿
+    - `seating`: 座席表
+    - `disclosure_method`: 公開方法
+    - `personal_material`: 個人名・団体名を含む資料
+    - `other`: その他
 
-❌ 以下は関連資料ではない：
-- プライバシーポリシー、サイトマップ
-- YouTube、動画ファイル（mp4、avi）
-- NDL Warp（国立国会図書館）
-- 一般的な案内・お知らせ
-
-**基準2: 会議資料・補足資料か？**
-- 会議で使用された資料
-- 参考資料、追加資料
-
-**基準3: ナビゲーション要素ではないか？**
-- ヘッダー、フッター、メニュー
-- パンくずリスト
-- サイドバーのリンク
-
-**基準4: 相対パスの処理**
+ステップ3: 相対パスを絶対パスに変換
 - 相対パスは絶対URLに変換
 - ベースURL: {url}
 
-ステップ3: 出力
+ステップ4: 出力
 すべてのリンクについて以下を記述：
 - URL（絶対パス）
 - リンクテキスト
@@ -290,8 +281,9 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
 # 処理手順
 1. すべてのリンクを抽出
-2. 5つの基準で判定（関連資料、会議資料、ナビゲーション、相対パス）
-3. 判定結果と理由を出力
+2. 各リンクが関連資料か判定し、カテゴリを決定
+3. 相対パスを絶対パスに変換
+4. 全リンクについて、URL、名前、カテゴリを出力
 
 # 出力フォーマット
 {format_instructions}
@@ -309,21 +301,30 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 "format_instructions": parser.get_format_instructions()
             })
 
-            # Extract document URLs (only those marked as related)
-            discovered_urls = []
-            if hasattr(result, "reports"):
-                for report in result.reports:
-                    if report.is_related_document:
-                        # Convert relative URLs to absolute
-                        absolute_url = urllib.parse.urljoin(url, report.url)
-                        discovered_urls.append(absolute_url)
+            # Extract discovered documents and convert relative URLs to absolute
+            discovered_documents = []
+            if "documents" in result:
+                for doc_dict in result["documents"]:
+                    # Convert relative URLs to absolute
+                    absolute_url = urllib.parse.urljoin(url, doc_dict["url"])
+                    discovered_documents.append(
+                        DiscoveredDocument(
+                            url=absolute_url,
+                            name=doc_dict["name"],
+                            category=doc_dict["category"]
+                        )
+                    )
 
-            logger.info(f"関連資料を{len(discovered_urls)}件発見しました")
+            logger.info(f"関連資料を{len(discovered_documents)}件発見しました")
+            for doc in discovered_documents:
+                logger.info(f"  - [{doc.category}] {doc.name}: {doc.url}")
 
-            return {"discovered_documents": discovered_urls}
+            return {"discovered_documents": discovered_documents}
 
         except Exception as e:
             logger.error(f"関連資料発見中にエラー: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {"discovered_documents": []}
 
     def invoke(self, input_data: dict) -> dict:
@@ -338,7 +339,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
             Dict with keys:
                 - markdown: str | None - Converted markdown
                 - main_content: str | None - Extracted main content
-                - discovered_documents: list[str] - URLs of related documents
+                - discovered_documents: list[DiscoveredDocument] - Discovered related documents
         """
         compiled = self.graph.compile()
         result = compiled.invoke(input_data)
