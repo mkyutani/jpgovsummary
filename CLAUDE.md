@@ -223,9 +223,7 @@ Use `.env` file or export directly. See `.env.local.sample` for template.
 
 **Constraints:**
 - Language: English
-- Max 20 words
 - Imperative style
-- Single sentence (one line only)
 - **No author footers** - Do not add "Generated with Claude Code" or "Co-Authored-By" footers
 
 **Commit workflow:**
