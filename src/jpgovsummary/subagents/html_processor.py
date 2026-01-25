@@ -283,7 +283,10 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         )
 
         assistant_prompt = AIMessagePromptTemplate.from_template(
-            """メインコンテンツから関連資料のリンクを抽出してください。
+            """以下のメインコンテンツから関連資料のリンクを抽出してください。
+
+# メインコンテンツ
+{main_content}
 
 # 処理手順
 1. すべてのリンクを抽出
@@ -300,7 +303,11 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         chain = prompt | llm | parser
 
         try:
-            result = chain.invoke({"url": url, "format_instructions": parser.get_format_instructions()})
+            result = chain.invoke({
+                "url": url,
+                "main_content": main_content,
+                "format_instructions": parser.get_format_instructions()
+            })
 
             # Extract document URLs (only those marked as related)
             discovered_urls = []

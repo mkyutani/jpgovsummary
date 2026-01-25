@@ -97,6 +97,19 @@ class ActionPlanner:
 
             if overview_only or not discovered_documents:
                 # Overview only - no document summarization
+                # But still need integrate step to set final_summary
+                steps.append(
+                    ActionStep(
+                        action_type="integrate_summaries",
+                        target=input_url,
+                        params={
+                            "overview": overview,
+                            "document_count": 0,
+                        },
+                        priority=0,
+                        estimated_tokens=1000,
+                    )
+                )
                 reasoning = (
                     "Overview only mode - skipping related document summarization"
                     if overview_only

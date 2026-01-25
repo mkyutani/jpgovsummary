@@ -262,11 +262,16 @@ class ActionExecutor:
         Handles human review (if not batch mode) and character limit checks.
         """
         batch = step.params.get("batch", False)
-        final_summary = state.get("final_summary", "")
+        final_summary = state.get("final_summary") or ""
 
         logger.info("Finalizing summary:")
         logger.info(f"  - Batch mode: {batch}")
         logger.info(f"  - Summary length: {len(final_summary)} characters")
+
+        if not final_summary:
+            logger.warning("No final summary available for finalization")
+            # Use empty summary as fallback
+            final_summary = "(要約なし)"
 
         # Character limit check
         max_chars = 2000  # From bluesky_poster.py
