@@ -184,6 +184,10 @@ def main() -> int:
         "--overview-only", action="store_true",
         help="Generate overview only without processing additional documents"
     )
+    parser.add_argument(
+        "--use-v2", action="store_true",
+        help="Use v2 Plan-Action architecture (experimental)"
+    )
 
     args = parser.parse_args()
 
@@ -196,6 +200,30 @@ def main() -> int:
 
     # Strip whitespace and control characters from URL/file path
     args.url = args.url.strip()
+
+    # Use v2 Plan-Action architecture if --use-v2 flag is set
+    if args.use_v2:
+        from .jpgovwatcher_v2 import run_jpgovwatcher_v2
+
+        # Initialize model
+        if args.model:
+            model = Model(args.model)
+        else:
+            model = Model()
+
+        result = run_jpgovwatcher_v2(
+            url=args.url,
+            model=model,
+            batch=args.batch,
+            skip_bluesky_posting=args.skip_bluesky_posting,
+            overview_only=args.overview_only,
+        )
+
+        if result["success"]:
+            return 0
+        else:
+            print(f"Error: {result.get('error')}", file=sys.stderr)
+            return 1
 
     # Check page type
     page_type = get_page_type(args.url)
