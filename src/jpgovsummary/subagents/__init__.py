@@ -16,7 +16,8 @@ error isolation.
 """
 
 from jpgovsummary.subagents.document_type_detector import DocumentTypeDetector
+from jpgovsummary.subagents.html_processor import HTMLProcessor
 from jpgovsummary.subagents.powerpoint_summarizer import PowerPointSummarizer
 from jpgovsummary.subagents.word_summarizer import WordSummarizer
 
-__all__ = ["DocumentTypeDetector", "PowerPointSummarizer", "WordSummarizer"]
+__all__ = ["DocumentTypeDetector", "HTMLProcessor", "PowerPointSummarizer", "WordSummarizer"]
