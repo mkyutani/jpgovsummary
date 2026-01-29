@@ -28,13 +28,13 @@ class ActionExecutor:
     Executes ActionPlan steps by invoking sub-agents and storing results.
     """
 
-    def __init__(self, model: Model | None = None, parallel: bool = False, max_workers: int = 3):
+    def __init__(self, model: Model | None = None, parallel: bool = True, max_workers: int = 3):
         """
         Initialize ActionExecutor.
 
         Args:
             model: Model instance for LLM access. If None, uses default Model().
-            parallel: Enable parallel execution for same-priority steps.
+            parallel: Enable parallel execution for same-priority steps (default: True).
             max_workers: Maximum number of parallel workers (default: 3).
         """
         self.model = model if model is not None else Model()
