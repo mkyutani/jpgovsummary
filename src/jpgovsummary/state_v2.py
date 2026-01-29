@@ -11,7 +11,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
-
 # ============================================================================
 # Action Plan Models (Planning Phase)
 # ============================================================================
@@ -24,6 +23,7 @@ class ActionStep(BaseModel):
         "summarize_pdf",
         "extract_html",
         "detect_document_type",
+        "create_meeting_summary",
         "integrate_summaries",
         "finalize",
         "post_to_bluesky",
@@ -101,6 +101,9 @@ class DocumentSummaryResult(BaseModel):
     document_type: str | None = Field(
         default=None, description="Detected document type (PowerPoint/Word/etc)"
     )
+    category: str | None = Field(
+        default=None, description="Document category (agenda/minutes/material/etc)"
+    )
     tokens_used: int | None = Field(default=None, description="Tokens consumed")
     timestamp: str = Field(
         default_factory=lambda: datetime.now().isoformat(),
@@ -130,6 +133,11 @@ class PlanState(TypedDict):
     discovered_documents: list[DiscoveredDocument] | None  # Related documents found
     action_plan: ActionPlan | None  # Generated execution plan
 
+    # Meeting summary components (extracted from HTML)
+    embedded_agenda: str | None  # Agenda content from HTML main content
+    embedded_minutes: str | None  # Minutes content from HTML main content
+    meeting_summary: str | None  # Integrated meeting summary
+
     # Control flags (inherited from CLI)
     batch: bool  # Run without human interaction
     skip_bluesky_posting: bool  # Skip Bluesky posting
@@ -155,6 +163,10 @@ class ExecutionState(TypedDict):
     document_summaries: list[DocumentSummaryResult]  # Summaries from sub-agents
     final_summary: str | None  # Integrated final summary
     final_review_summary: str | None  # Human-reviewed summary (if not batch)
+
+    # Meeting summary (from agenda/minutes)
+    meeting_summary: str | None  # Consolidated meeting summary
+    meeting_summary_sources: dict | None  # Track what sources were used
 
     # Review session (for interactive mode)
     review_session: dict | None  # Q&A history and improvements
@@ -248,6 +260,12 @@ class HTMLProcessorState(TypedDict):
     main_content: str | None  # Extracted main content (headers/footers removed)
     discovered_documents: list[DiscoveredDocument] | None  # Discovered related documents
 
+    # Meeting summary extraction (from main content)
+    agenda_content: str | None  # Extracted agenda section
+    minutes_content: str | None  # Extracted minutes section
+    has_embedded_agenda: bool  # Flag if agenda found in main content
+    has_embedded_minutes: bool  # Flag if minutes found in main content
+
 
 # ============================================================================
 # Backward Compatibility Helpers
@@ -268,7 +286,9 @@ def convert_v1_to_plan_state(v1_state: dict) -> PlanState:
         input_url=v1_state.get("url", ""),
         input_type="html_meeting" if v1_state.get("is_meeting_page") else "pdf_file",
         overview=v1_state.get("overview"),
-        discovered_documents=[r.url for r in v1_state.get("candidate_reports", {}).get("reports", [])]
+        discovered_documents=[
+            r.url for r in v1_state.get("candidate_reports", {}).get("reports", [])
+        ]
         if v1_state.get("candidate_reports")
         else None,
         action_plan=None,

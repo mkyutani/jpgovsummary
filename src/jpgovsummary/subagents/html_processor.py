@@ -20,6 +20,7 @@ from langgraph.graph import END, StateGraph
 from .. import Model, logger
 from ..state_v2 import DiscoveredDocument, DiscoveredDocumentList, HTMLProcessorState
 from ..tools import load_html_as_markdown
+from .meeting_summary_extractor import MeetingSummaryExtractor
 
 
 class HTMLProcessor:
@@ -38,6 +39,7 @@ class HTMLProcessor:
             model: Model instance for LLM access. If None, uses default Model().
         """
         self.model = model if model is not None else Model()
+        self.meeting_summary_extractor = MeetingSummaryExtractor(model=self.model)
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
@@ -49,15 +51,17 @@ class HTMLProcessor:
         """
         graph = StateGraph(HTMLProcessorState)
 
-        # Three-stage pipeline
+        # Four-stage pipeline
         graph.add_node("load_html", self._load_html)
         graph.add_node("extract_main_content", self._extract_main_content)
+        graph.add_node("extract_meeting_summary", self._extract_meeting_summary)
         graph.add_node("discover_documents", self._discover_documents)
 
         # Linear flow
         graph.set_entry_point("load_html")
         graph.add_edge("load_html", "extract_main_content")
-        graph.add_edge("extract_main_content", "discover_documents")
+        graph.add_edge("extract_main_content", "extract_meeting_summary")
+        graph.add_edge("extract_meeting_summary", "discover_documents")
         graph.add_edge("discover_documents", END)
 
         return graph
@@ -183,7 +187,9 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 # Retry extraction
                 retry_messages = [
                     HumanMessage(content=f'会議のURLは"{url}"です。'),
-                    HumanMessage(content=f"マークダウンは以下の通りです：\n\n{normalized_markdown}"),
+                    HumanMessage(
+                        content=f"マークダウンは以下の通りです：\n\n{normalized_markdown}"
+                    ),
                 ]
 
                 retry_result = chain.invoke({"messages": retry_messages})
@@ -206,6 +212,63 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         logger.info("-" * 64)
 
         return {"main_content": main_content}
+
+    def _extract_meeting_summary(self, state: HTMLProcessorState) -> HTMLProcessorState:
+        """
+        Extract agenda and minutes content from main content.
+
+        Args:
+            state: Current state with main_content
+
+        Returns:
+            Updated state with agenda_content, minutes_content, and flags
+        """
+        main_content = state.get("main_content")
+
+        if not main_content:
+            logger.info("メインコンテンツが空のため、議事要約抽出をスキップします")
+            return {
+                "agenda_content": None,
+                "minutes_content": None,
+                "has_embedded_agenda": False,
+                "has_embedded_minutes": False,
+            }
+
+        logger.info("議事次第・議事録の抽出を開始...")
+
+        try:
+            extraction_result = self.meeting_summary_extractor.invoke(
+                {"main_content": main_content}
+            )
+
+            agenda_content = extraction_result.get("agenda_content")
+            minutes_content = extraction_result.get("minutes_content")
+            has_embedded_agenda = extraction_result.get("has_embedded_agenda", False)
+            has_embedded_minutes = extraction_result.get("has_embedded_minutes", False)
+
+            if has_embedded_agenda or has_embedded_minutes:
+                logger.info("✅ 議事要約の抽出が完了しました")
+            else:
+                logger.info("議事次第・議事録セクションは見つかりませんでした")
+
+            return {
+                "agenda_content": agenda_content,
+                "minutes_content": minutes_content,
+                "has_embedded_agenda": has_embedded_agenda,
+                "has_embedded_minutes": has_embedded_minutes,
+            }
+
+        except Exception as e:
+            logger.error(f"議事要約抽出中にエラー: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
+            return {
+                "agenda_content": None,
+                "minutes_content": None,
+                "has_embedded_agenda": False,
+                "has_embedded_minutes": False,
+            }
 
     def _discover_documents(self, state: HTMLProcessorState) -> HTMLProcessorState:
         """
@@ -295,11 +358,13 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         chain = prompt | llm | parser
 
         try:
-            result = chain.invoke({
-                "url": url,
-                "main_content": main_content,
-                "format_instructions": parser.get_format_instructions()
-            })
+            result = chain.invoke(
+                {
+                    "url": url,
+                    "main_content": main_content,
+                    "format_instructions": parser.get_format_instructions(),
+                }
+            )
 
             # Extract discovered documents and convert relative URLs to absolute
             discovered_documents = []
@@ -309,9 +374,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                     absolute_url = urllib.parse.urljoin(url, doc_dict["url"])
                     discovered_documents.append(
                         DiscoveredDocument(
-                            url=absolute_url,
-                            name=doc_dict["name"],
-                            category=doc_dict["category"]
+                            url=absolute_url, name=doc_dict["name"], category=doc_dict["category"]
                         )
                     )
 
@@ -324,6 +387,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         except Exception as e:
             logger.error(f"関連資料発見中にエラー: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return {"discovered_documents": []}
 
@@ -340,6 +404,10 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 - markdown: str | None - Converted markdown
                 - main_content: str | None - Extracted main content
                 - discovered_documents: list[DiscoveredDocument] - Discovered related documents
+                - agenda_content: str | None - Extracted agenda section
+                - minutes_content: str | None - Extracted minutes section
+                - has_embedded_agenda: bool - Flag if agenda found
+                - has_embedded_minutes: bool - Flag if minutes found
         """
         compiled = self.graph.compile()
         result = compiled.invoke(input_data)

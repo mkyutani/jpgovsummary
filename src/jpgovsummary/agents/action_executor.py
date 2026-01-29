@@ -59,10 +59,10 @@ class ActionExecutor:
                 # Already executed
                 continue
 
-            logger.info(f"\n{'='*80}")
-            logger.info(f"Executing step {i+1}/{len(plan.steps)}: {step.action_type}")
+            logger.info(f"\n{'=' * 80}")
+            logger.info(f"Executing step {i + 1}/{len(plan.steps)}: {step.action_type}")
             logger.info(f"Target: {step.target}")
-            logger.info(f"{'='*80}\n")
+            logger.info(f"{'=' * 80}\n")
 
             try:
                 result = self._execute_step(step, state)
@@ -79,10 +79,10 @@ class ActionExecutor:
                 state["completed_actions"].append(completed_action)
                 state["current_step_index"] = i + 1
 
-                logger.info(f"✅ Step {i+1} completed successfully")
+                logger.info(f"✅ Step {i + 1} completed successfully")
 
             except Exception as e:
-                logger.error(f"❌ Step {i+1} failed: {e}")
+                logger.error(f"❌ Step {i + 1} failed: {e}")
                 import traceback
 
                 traceback.print_exc()
@@ -96,17 +96,19 @@ class ActionExecutor:
                 )
 
                 state["completed_actions"].append(completed_action)
-                state["errors"].append(f"Step {i+1} ({step.action_type}): {str(e)}")
+                state["errors"].append(f"Step {i + 1} ({step.action_type}): {str(e)}")
                 state["current_step_index"] = i + 1
 
                 # Continue to next step (don't fail entire plan)
                 continue
 
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info("Plan execution completed")
-        logger.info(f"Successful steps: {sum(1 for a in state['completed_actions'] if a.success)}/{len(plan.steps)}")
+        logger.info(
+            f"Successful steps: {sum(1 for a in state['completed_actions'] if a.success)}/{len(plan.steps)}"
+        )
         logger.info(f"Failed steps: {len(state['errors'])}")
-        logger.info(f"{'='*80}\n")
+        logger.info(f"{'=' * 80}\n")
 
         return state
 
@@ -123,6 +125,8 @@ class ActionExecutor:
         """
         if step.action_type == "summarize_pdf":
             return self._execute_summarize_pdf(step, state)
+        elif step.action_type == "create_meeting_summary":
+            return self._execute_create_meeting_summary(step, state)
         elif step.action_type == "integrate_summaries":
             return self._execute_integrate_summaries(step, state)
         elif step.action_type == "finalize":
@@ -196,12 +200,16 @@ class ActionExecutor:
 
         logger.info(f"Generated summary: {len(summary)} characters")
 
+        # Extract category from step params (passed by planner)
+        category = step.params.get("category")
+
         # Create document summary result
         doc_summary = DocumentSummaryResult(
             url=url,
             name=title,
             summary=summary,
             document_type=document_type,
+            category=category,  # Store category
         )
 
         # Store in state
@@ -211,31 +219,186 @@ class ActionExecutor:
             "document_type": document_type,
             "summary_length": len(summary),
             "title": title,
+            "category": category,
         }
+
+    def _execute_create_meeting_summary(self, step: ActionStep, state: ExecutionState) -> dict:
+        """
+        Execute meeting summary creation step.
+
+        Combines:
+        1. Embedded agenda content (from HTML main content)
+        2. Embedded minutes content (from HTML main content)
+        3. Agenda category document summaries
+        4. Minutes category document summaries
+
+        Into a consolidated meeting summary.
+        """
+        embedded_agenda = step.params.get("embedded_agenda")
+        embedded_minutes = step.params.get("embedded_minutes")
+        overview = step.params.get("overview")
+
+        # Filter document summaries by category (agenda, minutes only)
+        document_summaries = state.get("document_summaries", [])
+        meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
+
+        logger.info("Creating meeting summary:")
+        logger.info(f"  - Embedded agenda: {'Yes' if embedded_agenda else 'No'}")
+        logger.info(f"  - Embedded minutes: {'Yes' if embedded_minutes else 'No'}")
+        logger.info(
+            f"  - Agenda documents: {len([d for d in meeting_docs if d.category == 'agenda'])}"
+        )
+        logger.info(
+            f"  - Minutes documents: {len([d for d in meeting_docs if d.category == 'minutes'])}"
+        )
+
+        # Build combined meeting content
+        parts = []
+
+        if embedded_agenda:
+            parts.append(f"# 議事次第（HTMLより）\n\n{embedded_agenda}")
+
+        if embedded_minutes:
+            parts.append(f"\n\n# 議事録（HTMLより）\n\n{embedded_minutes}")
+
+        # Add agenda document summaries
+        agenda_docs = [d for d in meeting_docs if d.category == "agenda"]
+        if agenda_docs:
+            parts.append("\n\n# 議事次第（関連資料）\n")
+            for doc in agenda_docs:
+                parts.append(f"\n## {doc.name}\n")
+                parts.append(doc.summary)
+
+        # Add minutes document summaries
+        minutes_docs = [d for d in meeting_docs if d.category == "minutes"]
+        if minutes_docs:
+            parts.append("\n\n# 議事録（関連資料）\n")
+            for doc in minutes_docs:
+                parts.append(f"\n## {doc.name}\n")
+                parts.append(doc.summary)
+
+        combined_content = "\n".join(parts) if parts else ""
+
+        if not combined_content:
+            logger.warning("No meeting content to summarize")
+            return {"meeting_summary_length": 0}
+
+        # Use LLM to create integrated meeting summary
+        llm = self.model.llm()
+
+        from langchain.prompts import PromptTemplate
+
+        meeting_summary_prompt = PromptTemplate(
+            input_variables=["content", "overview"],
+            template="""あなたは会議の議事要約を作成する専門家です。
+
+以下の情報から、会議の議事要約を作成してください。
+
+# 会議概要
+{overview}
+
+# 議事関連コンテンツ
+{content}
+
+# 要約作成手順
+
+ステップ1: 議事の構造を把握する
+- 議題の流れと構成を理解
+- 主要な議論項目を特定
+- 決定事項とアクションアイテムを抽出
+
+ステップ2: 議事要約を作成する
+- 会議で議論された主要なトピック
+- 各議題での重要な議論内容
+- 決定事項・合意事項
+- 今後のアクションアイテム
+- 次回会議の予定（あれば）
+
+ステップ3: 簡潔にまとめる
+- 冗長な表現を避ける
+- 重要な情報を優先
+- 議事の流れを保持
+
+# 出力形式
+議事要約のみを出力してください（マークダウン見出しは不要、本文のみ）
+
+# 文量
+500-1500文字程度
+
+# 制約
+- 推測や補完は行わない
+- 提供されたコンテンツに記載されている内容のみを使用
+- 「について：」などの空虚な表現は避ける
+- 具体的な内容を含める
+""",
+        )
+
+        chain = meeting_summary_prompt | llm
+
+        try:
+            result = chain.invoke(
+                {
+                    "content": combined_content[:15000],  # Limit to 15K chars
+                    "overview": overview or "",
+                }
+            )
+
+            meeting_summary = result.content.strip()
+
+            logger.info(f"Created meeting summary: {len(meeting_summary)} characters")
+
+            # Store in state
+            state["meeting_summary"] = meeting_summary
+            state["meeting_summary_sources"] = {
+                "embedded_agenda": bool(embedded_agenda),
+                "embedded_minutes": bool(embedded_minutes),
+                "agenda_docs": len(agenda_docs),
+                "minutes_docs": len(minutes_docs),
+            }
+
+            return {"meeting_summary_length": len(meeting_summary)}
+
+        except Exception as e:
+            logger.error(f"Error creating meeting summary: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return {"meeting_summary_length": 0}
 
     def _execute_integrate_summaries(self, step: ActionStep, state: ExecutionState) -> dict:
         """
         Execute summary integration step.
 
-        Combines overview (if exists) + all document summaries into final summary.
+        Combines overview + meeting summary + other document summaries into final summary.
         """
         overview = step.params.get("overview")
         step.params.get("document_count", 0)
         document_summaries = state.get("document_summaries", [])
+        meeting_summary = state.get("meeting_summary")  # New: meeting summary
 
         logger.info("Integrating summaries:")
         logger.info(f"  - Overview: {'Yes' if overview else 'No'}")
+        logger.info(f"  - Meeting summary: {'Yes' if meeting_summary else 'No'}")
         logger.info(f"  - Document summaries: {len(document_summaries)}")
 
         # Build integrated summary
         parts = []
 
+        # 1. Overview (if exists)
         if overview:
             parts.append(f"# 会議概要\n\n{overview}")
 
-        if document_summaries:
+        # 2. Meeting summary (new section)
+        if meeting_summary:
+            parts.append(f"\n\n# 議事要約\n\n{meeting_summary}")
+
+        # 3. Related materials summary (excluding agenda/minutes - they're in meeting summary)
+        other_docs = [
+            doc for doc in document_summaries if doc.category not in ["agenda", "minutes"]
+        ]
+        if other_docs:
             parts.append("\n\n# 関連資料の要約\n")
-            for i, doc_summary in enumerate(document_summaries, 1):
+            for i, doc_summary in enumerate(other_docs, 1):
                 parts.append(f"\n## {i}. {doc_summary.name}\n")
                 parts.append(f"**種類:** {doc_summary.document_type}\n\n")
                 parts.append(doc_summary.summary)
@@ -249,10 +412,15 @@ class ActionExecutor:
         state["final_summary"] = integrated_summary
 
         logger.info(f"Integrated summary: {len(integrated_summary)} characters")
+        logger.info(
+            f"  - Agenda/minutes docs excluded: {len(document_summaries) - len(other_docs)}"
+        )
+        logger.info(f"  - Other docs included: {len(other_docs)}")
 
         return {
             "summary_length": len(integrated_summary),
             "document_count": len(document_summaries),
+            "other_docs_count": len(other_docs),
         }
 
     def _execute_finalize(self, step: ActionStep, state: ExecutionState) -> dict:

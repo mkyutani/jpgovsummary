@@ -9,6 +9,7 @@ Sub-agents:
 - DocumentTypeDetector: Detects document type from PDF content (1000-1500 token reduction)
 - WordSummarizer: Processes Word documents
 - HTMLProcessor: Handles HTML loading and content extraction
+- MeetingSummaryExtractor: Extracts agenda and minutes from HTML main content
 
 Each sub-agent is implemented as an independent LangGraph StateGraph
 with its own isolated state, enabling parallel execution and better
@@ -17,7 +18,14 @@ error isolation.
 
 from jpgovsummary.subagents.document_type_detector import DocumentTypeDetector
 from jpgovsummary.subagents.html_processor import HTMLProcessor
+from jpgovsummary.subagents.meeting_summary_extractor import MeetingSummaryExtractor
 from jpgovsummary.subagents.powerpoint_summarizer import PowerPointSummarizer
 from jpgovsummary.subagents.word_summarizer import WordSummarizer
 
-__all__ = ["DocumentTypeDetector", "HTMLProcessor", "PowerPointSummarizer", "WordSummarizer"]
+__all__ = [
+    "DocumentTypeDetector",
+    "HTMLProcessor",
+    "MeetingSummaryExtractor",
+    "PowerPointSummarizer",
+    "WordSummarizer",
+]

@@ -75,7 +75,21 @@ class ActionPlanner:
             main_content = html_result.get("main_content")
             discovered_documents = html_result.get("discovered_documents", [])
 
+            # Extract embedded meeting content
+            embedded_agenda = html_result.get("agenda_content")
+            embedded_minutes = html_result.get("minutes_content")
+
+            # Filter documents by category
+            meeting_related_docs = [
+                doc for doc in discovered_documents if doc.category in ["agenda", "minutes"]
+            ]
+            other_docs = [
+                doc for doc in discovered_documents if doc.category not in ["agenda", "minutes"]
+            ]
+
             logger.info(f"Discovered {len(discovered_documents)} related documents")
+            logger.info(f"  - Meeting-related: {len(meeting_related_docs)} (agenda/minutes)")
+            logger.info(f"  - Other documents: {len(other_docs)}")
 
             if not main_content:
                 logger.warning("Failed to extract main content from HTML")
@@ -94,6 +108,7 @@ class ActionPlanner:
 
             # Build action plan
             steps = []
+            priority = 0
 
             if overview_only or not discovered_documents:
                 # Overview only - no document summarization
@@ -116,20 +131,56 @@ class ActionPlanner:
                     else "No related documents found - overview only"
                 )
             else:
-                # Add document summarization steps
-                # Priority: lower number = higher priority
-                for i, doc_url in enumerate(discovered_documents):
+                # Step 1: Summarize meeting-related documents (agenda, minutes) first
+                for doc in meeting_related_docs:
                     steps.append(
                         ActionStep(
                             action_type="summarize_pdf",
-                            target=doc_url,
-                            params={"source_meeting_url": input_url},
-                            priority=i,  # Process in discovery order
-                            estimated_tokens=5000,  # Estimated with sub-agent
+                            target=doc.url,
+                            params={
+                                "source_meeting_url": input_url,
+                                "category": doc.category,  # Pass category
+                            },
+                            priority=priority,
+                            estimated_tokens=5000,
                         )
                     )
+                    priority += 1
 
-                # Add integration step
+                # Step 2: Create meeting summary (if any meeting content exists)
+                if embedded_agenda or embedded_minutes or meeting_related_docs:
+                    steps.append(
+                        ActionStep(
+                            action_type="create_meeting_summary",
+                            target=input_url,
+                            params={
+                                "embedded_agenda": embedded_agenda,
+                                "embedded_minutes": embedded_minutes,
+                                "overview": overview,
+                            },
+                            priority=priority,
+                            estimated_tokens=3000,
+                        )
+                    )
+                    priority += 1
+
+                # Step 3: Summarize other documents (material, reference, etc.)
+                for doc in other_docs:
+                    steps.append(
+                        ActionStep(
+                            action_type="summarize_pdf",
+                            target=doc.url,
+                            params={
+                                "source_meeting_url": input_url,
+                                "category": doc.category,  # Pass category
+                            },
+                            priority=priority,
+                            estimated_tokens=5000,
+                        )
+                    )
+                    priority += 1
+
+                # Step 4: Integrate summaries
                 steps.append(
                     ActionStep(
                         action_type="integrate_summaries",
@@ -138,15 +189,17 @@ class ActionPlanner:
                             "overview": overview,
                             "document_count": len(discovered_documents),
                         },
-                        priority=len(discovered_documents),  # After all summaries
+                        priority=priority,
                         estimated_tokens=2000,
                     )
                 )
+                priority += 1
 
                 reasoning = (
-                    f"HTML meeting page with {len(discovered_documents)} related documents. "
-                    f"Plan: Extract main content → Summarize {len(discovered_documents)} documents → "
-                    f"Integrate summaries."
+                    f"HTML meeting page with {len(discovered_documents)} related documents "
+                    f"({len(meeting_related_docs)} agenda/minutes, {len(other_docs)} other). "
+                    f"Plan: Extract main content → Summarize meeting documents → "
+                    f"Create meeting summary → Summarize other documents → Integrate summaries."
                 )
 
             # Add finalization step
@@ -155,10 +208,11 @@ class ActionPlanner:
                     action_type="finalize",
                     target=input_url,
                     params={"batch": state.get("batch", False)},
-                    priority=len(steps),
+                    priority=priority,
                     estimated_tokens=500,
                 )
             )
+            priority += 1
 
             # Add Bluesky posting step if not skipped
             if not state.get("skip_bluesky_posting", False):
@@ -167,7 +221,7 @@ class ActionPlanner:
                         action_type="post_to_bluesky",
                         target=input_url,
                         params={},
-                        priority=len(steps),
+                        priority=priority,
                         estimated_tokens=100,
                     )
                 )
@@ -257,8 +311,7 @@ class ActionPlanner:
         action_plan = ActionPlan(
             steps=steps,
             reasoning=(
-                "Single PDF file processing. "
-                "Plan: Detect type → Summarize → Integrate → Finalize."
+                "Single PDF file processing. Plan: Detect type → Summarize → Integrate → Finalize."
             ),
             total_estimated_tokens=sum(s.estimated_tokens or 0 for s in steps),
         )
