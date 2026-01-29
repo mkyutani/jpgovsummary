@@ -3,7 +3,12 @@ Action Executor for Plan-Action architecture.
 
 This module executes ActionPlan steps by invoking appropriate sub-agents
 and collecting results in ExecutionState.
+
+Supports both sequential and parallel execution modes.
 """
+
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from .. import Model, logger
 from ..state_v2 import (
@@ -23,14 +28,18 @@ class ActionExecutor:
     Executes ActionPlan steps by invoking sub-agents and storing results.
     """
 
-    def __init__(self, model: Model | None = None):
+    def __init__(self, model: Model | None = None, parallel: bool = False, max_workers: int = 3):
         """
         Initialize ActionExecutor.
 
         Args:
             model: Model instance for LLM access. If None, uses default Model().
+            parallel: Enable parallel execution for same-priority steps.
+            max_workers: Maximum number of parallel workers (default: 3).
         """
         self.model = model if model is not None else Model()
+        self.parallel = parallel
+        self.max_workers = max_workers
 
         # Initialize sub-agents
         self.document_type_detector = DocumentTypeDetector(model=self.model)
@@ -48,10 +57,28 @@ class ActionExecutor:
             Updated ExecutionState with results
         """
         plan = state["plan"]
-        current_index = state.get("current_step_index", 0)
 
         logger.info(f"Executing action plan with {len(plan.steps)} steps")
         logger.info(f"Plan reasoning: {plan.reasoning}")
+        logger.info(f"Parallel mode: {self.parallel}")
+
+        if self.parallel:
+            return self._execute_plan_parallel(state)
+        else:
+            return self._execute_plan_sequential(state)
+
+    def _execute_plan_sequential(self, state: ExecutionState) -> ExecutionState:
+        """
+        Execute all steps sequentially.
+
+        Args:
+            state: ExecutionState with plan to execute
+
+        Returns:
+            Updated ExecutionState with results
+        """
+        plan = state["plan"]
+        current_index = state.get("current_step_index", 0)
 
         # Execute each step sequentially
         for i, step in enumerate(plan.steps):
@@ -111,6 +138,234 @@ class ActionExecutor:
         logger.info(f"{'=' * 80}\n")
 
         return state
+
+    def _execute_plan_parallel(self, state: ExecutionState) -> ExecutionState:
+        """
+        Execute steps with parallel processing for same-priority steps.
+
+        Groups steps by priority and executes same-priority steps in parallel.
+        Only parallelizes 'summarize_pdf' action types for safety.
+
+        Args:
+            state: ExecutionState with plan to execute
+
+        Returns:
+            Updated ExecutionState with results
+        """
+        plan = state["plan"]
+
+        # Group steps by priority
+        priority_groups: dict[int, list[tuple[int, ActionStep]]] = defaultdict(list)
+        for i, step in enumerate(plan.steps):
+            priority_groups[step.priority].append((i, step))
+
+        logger.info(f"Grouped into {len(priority_groups)} priority levels")
+
+        step_count = 0
+        total_steps = len(plan.steps)
+
+        # Execute by priority order (lower number = higher priority)
+        for priority in sorted(priority_groups.keys()):
+            steps_with_indices = priority_groups[priority]
+
+            # Separate parallelizable steps (summarize_pdf) from sequential steps
+            parallel_steps = [
+                (i, s) for i, s in steps_with_indices if s.action_type == "summarize_pdf"
+            ]
+            sequential_steps = [
+                (i, s) for i, s in steps_with_indices if s.action_type != "summarize_pdf"
+            ]
+
+            # Execute parallel steps
+            if len(parallel_steps) > 1:
+                logger.info(f"\n{'=' * 80}")
+                logger.info(
+                    f"Parallel execution: {len(parallel_steps)} PDF summarizations (priority {priority})"
+                )
+                logger.info(f"{'=' * 80}\n")
+
+                results = self._execute_steps_parallel(parallel_steps, state)
+
+                for (idx, step), result in zip(parallel_steps, results, strict=True):
+                    step_count += 1
+                    if result.get("success", False):
+                        logger.info(
+                            f"✅ Step {idx + 1}/{total_steps} completed: {step.target.split('/')[-1]}"
+                        )
+                    else:
+                        logger.error(
+                            f"❌ Step {idx + 1}/{total_steps} failed: {result.get('error', 'Unknown')}"
+                        )
+
+            elif len(parallel_steps) == 1:
+                # Single step - run sequentially
+                sequential_steps.extend(parallel_steps)
+
+            # Execute sequential steps
+            for idx, step in sequential_steps:
+                step_count += 1
+                logger.info(f"\n{'=' * 80}")
+                logger.info(f"Executing step {idx + 1}/{total_steps}: {step.action_type}")
+                logger.info(f"Target: {step.target}")
+                logger.info(f"{'=' * 80}\n")
+
+                try:
+                    result = self._execute_step(step, state)
+
+                    completed_action = CompletedAction(
+                        step=step,
+                        result=result,
+                        tokens_used=result.get("tokens_used") if isinstance(result, dict) else None,
+                        success=True,
+                    )
+                    state["completed_actions"].append(completed_action)
+                    state["current_step_index"] = idx + 1
+
+                    logger.info(f"✅ Step {idx + 1} completed successfully")
+
+                except Exception as e:
+                    logger.error(f"❌ Step {idx + 1} failed: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+
+                    completed_action = CompletedAction(
+                        step=step,
+                        result=None,
+                        success=False,
+                        error_message=str(e),
+                    )
+                    state["completed_actions"].append(completed_action)
+                    state["errors"].append(f"Step {idx + 1} ({step.action_type}): {str(e)}")
+                    state["current_step_index"] = idx + 1
+
+        logger.info(f"\n{'=' * 80}")
+        logger.info("Plan execution completed (parallel mode)")
+        logger.info(
+            f"Successful steps: {sum(1 for a in state['completed_actions'] if a.success)}/{total_steps}"
+        )
+        logger.info(f"Failed steps: {len(state['errors'])}")
+        logger.info(f"{'=' * 80}\n")
+
+        return state
+
+    def _execute_steps_parallel(
+        self, steps_with_indices: list[tuple[int, ActionStep]], state: ExecutionState
+    ) -> list[dict]:
+        """
+        Execute multiple steps in parallel using ThreadPoolExecutor.
+
+        Args:
+            steps_with_indices: List of (index, step) tuples to execute
+            state: ExecutionState (shared, but only append to document_summaries)
+
+        Returns:
+            List of result dicts
+        """
+
+        def execute_single(idx_step: tuple[int, ActionStep]) -> dict:
+            idx, step = idx_step
+            try:
+                # Only execute summarize_pdf in parallel
+                if step.action_type == "summarize_pdf":
+                    result = self._execute_summarize_pdf_isolated(step)
+                    return {"success": True, "idx": idx, "step": step, "result": result}
+                else:
+                    return {"success": False, "idx": idx, "step": step, "error": "Not parallelizable"}
+            except Exception as e:
+                return {"success": False, "idx": idx, "step": step, "error": str(e)}
+
+        results = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = list(executor.map(execute_single, steps_with_indices))
+            results = futures
+
+        # Process results and update state
+        for r in results:
+            step = r["step"]
+            idx = r["idx"]
+
+            if r["success"]:
+                result = r["result"]
+                doc_summary = result.get("doc_summary")
+                if doc_summary:
+                    state["document_summaries"].append(doc_summary)
+
+                completed_action = CompletedAction(
+                    step=step,
+                    result=result,
+                    tokens_used=result.get("tokens_used"),
+                    success=True,
+                )
+                state["completed_actions"].append(completed_action)
+            else:
+                completed_action = CompletedAction(
+                    step=step,
+                    result=None,
+                    success=False,
+                    error_message=r.get("error"),
+                )
+                state["completed_actions"].append(completed_action)
+                state["errors"].append(f"Step {idx + 1} ({step.action_type}): {r.get('error')}")
+
+        return results
+
+    def _execute_summarize_pdf_isolated(self, step: ActionStep) -> dict:
+        """
+        Execute PDF summarization in isolated context (for parallel execution).
+
+        Unlike _execute_summarize_pdf, this returns the DocumentSummaryResult
+        instead of modifying state directly.
+
+        Args:
+            step: ActionStep to execute
+
+        Returns:
+            Result dict with doc_summary included
+        """
+        url = step.target
+
+        logger.info(f"[Parallel] Loading PDF: {url.split('/')[-1]}")
+        pdf_pages = load_pdf_as_text(url)
+        logger.info(f"[Parallel] Loaded {len(pdf_pages)} pages from {url.split('/')[-1]}")
+
+        # Detect document type
+        detection_result = self.document_type_detector.invoke(
+            {"pdf_pages": pdf_pages[:10], "url": url}
+        )
+
+        document_type = detection_result["document_type"]
+        logger.info(f"[Parallel] Detected type: {document_type} for {url.split('/')[-1]}")
+
+        # Select appropriate summarizer
+        if document_type == "PowerPoint":
+            summarizer_result = self.powerpoint_summarizer.invoke(
+                {"pdf_pages": pdf_pages, "url": url}
+            )
+        else:
+            summarizer_result = self.word_summarizer.invoke({"pdf_pages": pdf_pages, "url": url})
+
+        summary = summarizer_result.get("summary", "")
+        title = summarizer_result.get("title", url.split("/")[-1])
+        category = step.params.get("category")
+
+        doc_summary = DocumentSummaryResult(
+            url=url,
+            name=title,
+            summary=summary,
+            document_type=document_type,
+            category=category,
+        )
+
+        logger.info(f"[Parallel] Completed: {title} ({len(summary)} chars)")
+
+        return {
+            "document_type": document_type,
+            "summary_length": len(summary),
+            "title": title,
+            "category": category,
+            "doc_summary": doc_summary,
+        }
 
     def _execute_step(self, step: ActionStep, state: ExecutionState) -> dict:
         """

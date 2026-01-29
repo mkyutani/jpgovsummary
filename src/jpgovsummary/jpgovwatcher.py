@@ -188,6 +188,10 @@ def main() -> int:
         "--use-v2", action="store_true",
         help="Use v2 Plan-Action architecture (experimental)"
     )
+    parser.add_argument(
+        "--parallel", action="store_true",
+        help="Enable parallel PDF processing (v2 only)"
+    )
 
     args = parser.parse_args()
 
@@ -217,6 +221,7 @@ def main() -> int:
             batch=args.batch,
             skip_bluesky_posting=args.skip_bluesky_posting,
             overview_only=args.overview_only,
+            parallel=args.parallel,
         )
 
         if result["success"]:

@@ -47,6 +47,7 @@ def run_jpgovwatcher_v2(
     batch: bool = False,
     skip_bluesky_posting: bool = False,
     overview_only: bool = False,
+    parallel: bool = False,
 ) -> dict:
     """
     Run jpgovsummary workflow using Plan-Action architecture (v2).
@@ -57,6 +58,7 @@ def run_jpgovwatcher_v2(
         batch: Run without human interaction
         skip_bluesky_posting: Skip Bluesky posting step
         overview_only: Generate overview only, skip related documents
+        parallel: Enable parallel PDF processing
 
     Returns:
         Dict with final results
@@ -158,7 +160,7 @@ def run_jpgovwatcher_v2(
     }
 
     # Create action executor
-    executor = ActionExecutor(model=model)
+    executor = ActionExecutor(model=model, parallel=parallel)
 
     # Execute action plan
     execution_state = executor.execute_plan(execution_state)
