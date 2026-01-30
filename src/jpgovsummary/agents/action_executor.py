@@ -272,7 +272,12 @@ class ActionExecutor:
                     result = self._execute_summarize_pdf_isolated(step)
                     return {"success": True, "idx": idx, "step": step, "result": result}
                 else:
-                    return {"success": False, "idx": idx, "step": step, "error": "Not parallelizable"}
+                    return {
+                        "success": False,
+                        "idx": idx,
+                        "step": step,
+                        "error": "Not parallelizable",
+                    }
             except Exception as e:
                 return {"success": False, "idx": idx, "step": step, "error": str(e)}
 
@@ -318,6 +323,8 @@ class ActionExecutor:
         Unlike _execute_summarize_pdf, this returns the DocumentSummaryResult
         instead of modifying state directly.
 
+        For agenda category documents, skips LLM and uses raw PDF text directly.
+
         Args:
             step: ActionStep to execute
 
@@ -325,30 +332,39 @@ class ActionExecutor:
             Result dict with doc_summary included
         """
         url = step.target
+        category = step.params.get("category")
 
         logger.info(f"[Parallel] Loading PDF: {url.split('/')[-1]}")
         pdf_pages = load_pdf_as_text(url)
         logger.info(f"[Parallel] Loaded {len(pdf_pages)} pages from {url.split('/')[-1]}")
 
-        # Detect document type
-        detection_result = self.document_type_detector.invoke(
-            {"pdf_pages": pdf_pages[:10], "url": url}
-        )
-
-        document_type = detection_result["document_type"]
-        logger.info(f"[Parallel] Detected type: {document_type} for {url.split('/')[-1]}")
-
-        # Select appropriate summarizer
-        if document_type == "PowerPoint":
-            summarizer_result = self.powerpoint_summarizer.invoke(
-                {"pdf_pages": pdf_pages, "url": url}
-            )
+        # For agenda documents, skip LLM and use raw PDF text
+        if category == "agenda":
+            logger.info("[Parallel] Agenda document - using raw PDF text (no LLM)")
+            summary = "\n\n".join(pdf_pages)
+            title = url.split("/")[-1].replace(".pdf", "")
+            document_type = "Agenda"
         else:
-            summarizer_result = self.word_summarizer.invoke({"pdf_pages": pdf_pages, "url": url})
+            # Detect document type
+            detection_result = self.document_type_detector.invoke(
+                {"pdf_pages": pdf_pages[:10], "url": url}
+            )
 
-        summary = summarizer_result.get("summary", "")
-        title = summarizer_result.get("title", url.split("/")[-1])
-        category = step.params.get("category")
+            document_type = detection_result["document_type"]
+            logger.info(f"[Parallel] Detected type: {document_type} for {url.split('/')[-1]}")
+
+            # Select appropriate summarizer
+            if document_type == "PowerPoint":
+                summarizer_result = self.powerpoint_summarizer.invoke(
+                    {"pdf_pages": pdf_pages, "url": url}
+                )
+            else:
+                summarizer_result = self.word_summarizer.invoke(
+                    {"pdf_pages": pdf_pages, "url": url}
+                )
+
+            summary = summarizer_result.get("summary", "")
+            title = summarizer_result.get("title", url.split("/")[-1])
 
         doc_summary = DocumentSummaryResult(
             url=url,
@@ -400,67 +416,79 @@ class ActionExecutor:
         """
         Execute PDF summarization step.
 
-        Steps:
+        For agenda category documents, skips LLM and uses raw PDF text directly.
+
+        Steps (for non-agenda):
         1. Load PDF
         2. Detect document type
         3. Invoke appropriate summarizer (PowerPoint or Word)
         4. Store result in state
         """
         url = step.target
+        category = step.params.get("category")
 
         logger.info(f"Loading PDF from: {url}")
         pdf_pages = load_pdf_as_text(url)
         logger.info(f"Loaded {len(pdf_pages)} pages")
 
-        # Detect document type
-        logger.info("Detecting document type...")
-        detection_result = self.document_type_detector.invoke(
-            {
-                "pdf_pages": pdf_pages[:10],  # First 10 pages for detection
-                "url": url,
-            }
-        )
-
-        document_type = detection_result["document_type"]
-        confidence_scores = detection_result["confidence_scores"]
-
-        logger.info(f"Detected type: {document_type}")
-        logger.info(f"Confidence scores: {confidence_scores}")
-
-        # Select appropriate summarizer
-        if document_type == "PowerPoint":
-            logger.info("Using PowerPointSummarizer sub-agent")
-            summarizer_result = self.powerpoint_summarizer.invoke(
-                {
-                    "pdf_pages": pdf_pages,
-                    "url": url,
-                }
-            )
-        elif document_type == "Word":
-            logger.info("Using WordSummarizer sub-agent")
-            summarizer_result = self.word_summarizer.invoke(
-                {
-                    "pdf_pages": pdf_pages,
-                    "url": url,
-                }
-            )
+        # For agenda documents, skip LLM and use raw PDF text
+        if category == "agenda":
+            logger.info("Agenda document - using raw PDF text (no LLM)")
+            summary = "\n\n".join(pdf_pages)
+            title = url.split("/")[-1].replace(".pdf", "")
+            document_type = "Agenda"
         else:
-            # Fallback: Try Word summarizer for other types
-            logger.warning(f"Unsupported type '{document_type}', falling back to WordSummarizer")
-            summarizer_result = self.word_summarizer.invoke(
+            # Detect document type
+            logger.info("Detecting document type...")
+            detection_result = self.document_type_detector.invoke(
                 {
-                    "pdf_pages": pdf_pages,
+                    "pdf_pages": pdf_pages[:10],  # First 10 pages for detection
                     "url": url,
                 }
             )
 
-        # Extract summary
-        summary = summarizer_result.get("summary", "")
-        title = summarizer_result.get("title", url.split("/")[-1])
+            document_type = detection_result["document_type"]
+            confidence_scores = detection_result["confidence_scores"]
+
+            logger.info(f"Detected type: {document_type}")
+            logger.info(f"Confidence scores: {confidence_scores}")
+
+            # Select appropriate summarizer
+            if document_type == "PowerPoint":
+                logger.info("Using PowerPointSummarizer sub-agent")
+                summarizer_result = self.powerpoint_summarizer.invoke(
+                    {
+                        "pdf_pages": pdf_pages,
+                        "url": url,
+                    }
+                )
+            elif document_type == "Word":
+                logger.info("Using WordSummarizer sub-agent")
+                summarizer_result = self.word_summarizer.invoke(
+                    {
+                        "pdf_pages": pdf_pages,
+                        "url": url,
+                    }
+                )
+            else:
+                # Fallback: Try Word summarizer for other types
+                logger.warning(
+                    f"Unsupported type '{document_type}', falling back to WordSummarizer"
+                )
+                summarizer_result = self.word_summarizer.invoke(
+                    {
+                        "pdf_pages": pdf_pages,
+                        "url": url,
+                    }
+                )
+
+            # Extract summary
+            summary = summarizer_result.get("summary", "")
+            title = summarizer_result.get("title", url.split("/")[-1])
 
         logger.info(f"Generated summary: {len(summary)} characters")
 
-        # Extract category from step params (passed by planner)
+        # Use category from Phase 1's discovered_documents (passed via ActionStep params)
         category = step.params.get("category")
 
         # Create document summary result
@@ -482,16 +510,15 @@ class ActionExecutor:
             "category": category,
         }
 
-    def _execute_generate_initial_overview(
-        self, step: ActionStep, state: ExecutionState
-    ) -> dict:
+    def _execute_generate_initial_overview(self, step: ActionStep, state: ExecutionState) -> dict:
         """
         Execute initial overview generation (Phase 2 Step 1).
 
         Creates overview from:
         1. Main content text (from HTML)
-        2. Embedded agenda/minutes content
-        3. Already-processed agenda/minutes PDF summaries
+        2. Embedded agenda/minutes content (from HTML)
+        3. Embedded minutes content (from HTML)
+        4. Already-processed agenda/minutes PDF summaries (using Phase 1 category classifications)
 
         Args:
             step: ActionStep with params containing main_content, embedded_agenda, embedded_minutes
@@ -506,6 +533,8 @@ class ActionExecutor:
         input_url = step.target
 
         # Get agenda/minutes summaries from already-processed PDFs
+        # NOTE: Category filtering uses Phase 1 classifications (from HTMLProcessor's discovered_documents).
+        # The category is passed through ActionStep params and stored in DocumentSummaryResult.
         document_summaries = state.get("document_summaries", [])
         meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
 
@@ -672,18 +701,18 @@ JSON配列で出力してください：
         )
 
         # Format documents for prompt
-        doc_list = "\n".join(
-            [f"- [{d['category']}] {d['name']}: {d['url']}" for d in documents]
-        )
+        doc_list = "\n".join([f"- [{d['category']}] {d['name']}: {d['url']}" for d in documents])
 
         try:
             parser = JsonOutputParser()
             chain = score_prompt | llm | parser
 
-            result = chain.invoke({
-                "overview": initial_overview[:5000] if initial_overview else "(概要なし)",
-                "documents": doc_list,
-            })
+            result = chain.invoke(
+                {
+                    "overview": initial_overview[:5000] if initial_overview else "(概要なし)",
+                    "documents": doc_list,
+                }
+            )
 
             # Convert to ScoredDocument list
             scored_documents = []
