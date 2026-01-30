@@ -16,6 +16,7 @@ from ..state_v2 import (
     CompletedAction,
     DocumentSummaryResult,
     ExecutionState,
+    ScoredDocument,
 )
 from ..subagents import DocumentTypeDetector, PowerPointSummarizer, WordSummarizer
 from ..tools.pdf_loader import load_pdf_as_text
@@ -380,8 +381,12 @@ class ActionExecutor:
         """
         if step.action_type == "summarize_pdf":
             return self._execute_summarize_pdf(step, state)
-        elif step.action_type == "create_meeting_summary":
-            return self._execute_create_meeting_summary(step, state)
+        elif step.action_type == "generate_initial_overview":
+            return self._execute_generate_initial_overview(step, state)
+        elif step.action_type == "score_documents":
+            return self._execute_score_documents(step, state)
+        elif step.action_type == "summarize_selected_documents":
+            return self._execute_summarize_selected_documents(step, state)
         elif step.action_type == "integrate_summaries":
             return self._execute_integrate_summaries(step, state)
         elif step.action_type == "finalize":
@@ -476,6 +481,315 @@ class ActionExecutor:
             "title": title,
             "category": category,
         }
+
+    def _execute_generate_initial_overview(
+        self, step: ActionStep, state: ExecutionState
+    ) -> dict:
+        """
+        Execute initial overview generation (Phase 2 Step 1).
+
+        Creates overview from:
+        1. Main content text (from HTML)
+        2. Embedded agenda/minutes content
+        3. Already-processed agenda/minutes PDF summaries
+
+        Args:
+            step: ActionStep with params containing main_content, embedded_agenda, embedded_minutes
+            state: ExecutionState with document_summaries from agenda/minutes PDFs
+
+        Returns:
+            Result dict with overview_length
+        """
+        main_content = step.params.get("main_content") or state.get("main_content", "")
+        embedded_agenda = step.params.get("embedded_agenda") or state.get("embedded_agenda")
+        embedded_minutes = step.params.get("embedded_minutes") or state.get("embedded_minutes")
+        input_url = step.target
+
+        # Get agenda/minutes summaries from already-processed PDFs
+        document_summaries = state.get("document_summaries", [])
+        meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
+
+        logger.info("Generating initial overview:")
+        logger.info(f"  - Main content: {len(main_content)} chars")
+        logger.info(f"  - Embedded agenda: {'Yes' if embedded_agenda else 'No'}")
+        logger.info(f"  - Embedded minutes: {'Yes' if embedded_minutes else 'No'}")
+        logger.info(f"  - Agenda/minutes PDFs: {len(meeting_docs)}")
+
+        # Build context for overview generation
+        context_parts = []
+
+        # 1. Main content (meeting page text)
+        if main_content:
+            context_parts.append(f"# 会議ページ本文\n\n{main_content[:8000]}")
+
+        # 2. Embedded agenda from HTML
+        if embedded_agenda:
+            context_parts.append(f"\n\n# 議事次第（HTML内）\n\n{embedded_agenda}")
+
+        # 3. Embedded minutes from HTML
+        if embedded_minutes:
+            context_parts.append(f"\n\n# 議事録（HTML内）\n\n{embedded_minutes}")
+
+        # 4. Agenda/minutes PDF summaries
+        for doc in meeting_docs:
+            label = "議事次第" if doc.category == "agenda" else "議事録"
+            context_parts.append(f"\n\n# {label}（PDF: {doc.name}）\n\n{doc.summary}")
+
+        combined_context = "\n".join(context_parts)
+
+        if not combined_context.strip():
+            logger.warning("No content available for overview generation")
+            state["initial_overview"] = "(内容なし)"
+            return {"overview_length": 0}
+
+        # Generate overview using LLM
+        llm = self.model.llm()
+
+        from langchain.prompts import PromptTemplate
+
+        overview_prompt = PromptTemplate(
+            input_variables=["content", "url"],
+            template="""あなたは会議情報を要約する専門家です。以下の会議情報から概要を作成してください。
+
+# 会議ページURL
+{url}
+
+# 会議情報
+{content}
+
+# 要約作成手順
+
+ステップ1: 会議の基本情報を特定する
+- 会議名・委員会名
+- 開催日時・場所
+- 議題・テーマ
+
+ステップ2: 主要な内容を抽出する
+- 議論された主要論点
+- 決定事項・合意事項
+- 今後の予定・方針
+
+ステップ3: 概要を作成する
+- 会議の目的と位置づけ
+- 主要な議論内容
+- 重要な決定や方針
+
+# 出力形式
+概要文のみを出力してください（Markdown見出し不要、改行は適宜使用）
+
+# 文量
+500-1500文字程度
+
+# 制約
+- 推測や補完は行わない
+- 提供された情報に記載されている内容のみを使用
+- 会議の性格（定例会議、臨時会議、審議会等）を明記
+""",
+        )
+
+        chain = overview_prompt | llm
+
+        try:
+            result = chain.invoke({"content": combined_context[:15000], "url": input_url})
+            overview = result.content.strip()
+
+            logger.info(f"Generated initial overview: {len(overview)} characters")
+
+            # Store in state
+            state["initial_overview"] = overview
+
+            return {"overview_length": len(overview)}
+
+        except Exception as e:
+            logger.error(f"Error generating overview: {e}")
+            import traceback
+
+            traceback.print_exc()
+            state["initial_overview"] = "(概要生成エラー)"
+            return {"overview_length": 0, "error": str(e)}
+
+    def _execute_score_documents(self, step: ActionStep, state: ExecutionState) -> dict:
+        """
+        Execute document scoring (Phase 2 Step 2).
+
+        Scores documents based on:
+        1. Initial overview context
+        2. Document category and name
+        3. Relevance to meeting content
+
+        Args:
+            step: ActionStep with params containing documents list
+            state: ExecutionState with initial_overview
+
+        Returns:
+            Result dict with scored_count
+        """
+        documents = step.params.get("documents", [])
+        initial_overview = state.get("initial_overview", "")
+
+        logger.info(f"Scoring {len(documents)} documents")
+
+        if not documents:
+            state["scored_documents"] = []
+            return {"scored_count": 0}
+
+        # Use LLM to score documents
+        llm = self.model.llm()
+
+        from langchain.prompts import PromptTemplate
+        from langchain_core.output_parsers import JsonOutputParser
+
+        score_prompt = PromptTemplate(
+            input_variables=["overview", "documents"],
+            template="""あなたは会議資料の重要度を判定する専門家です。
+
+# 会議概要
+{overview}
+
+# 資料リスト
+{documents}
+
+# 判定基準
+以下の基準でスコア（0-100）を付けてください：
+- 会議の主要議題に関連する資料: 80-100
+- 政策・方針に関する資料: 70-90
+- データ・統計資料: 60-80
+- 参考資料・背景資料: 40-60
+- 委員個人提出資料: 30-50
+- 名簿・座席表等の形式資料: 0-20
+
+# 出力形式
+JSON配列で出力してください：
+[
+  {{"url": "資料URL", "name": "資料名", "score": スコア, "reason": "理由"}},
+  ...
+]
+
+# 注意
+- 全ての資料にスコアを付けてください
+- スコアは整数で
+""",
+        )
+
+        # Format documents for prompt
+        doc_list = "\n".join(
+            [f"- [{d['category']}] {d['name']}: {d['url']}" for d in documents]
+        )
+
+        try:
+            parser = JsonOutputParser()
+            chain = score_prompt | llm | parser
+
+            result = chain.invoke({
+                "overview": initial_overview[:5000] if initial_overview else "(概要なし)",
+                "documents": doc_list,
+            })
+
+            # Convert to ScoredDocument list
+            scored_documents = []
+            for item in result:
+                scored_documents.append(
+                    ScoredDocument(
+                        url=item.get("url", ""),
+                        name=item.get("name", ""),
+                        category=next(
+                            (d["category"] for d in documents if d["url"] == item.get("url")),
+                            "unknown",
+                        ),
+                        score=float(item.get("score", 0)),
+                        reason=item.get("reason", ""),
+                    )
+                )
+
+            # Sort by score descending
+            scored_documents.sort(key=lambda x: x.score, reverse=True)
+
+            logger.info(f"Scored {len(scored_documents)} documents")
+            for doc in scored_documents[:5]:
+                logger.info(f"  - {doc.score:.0f}: {doc.name}")
+
+            state["scored_documents"] = scored_documents
+
+            return {"scored_count": len(scored_documents)}
+
+        except Exception as e:
+            logger.error(f"Error scoring documents: {e}")
+            import traceback
+
+            traceback.print_exc()
+            state["scored_documents"] = []
+            return {"scored_count": 0, "error": str(e)}
+
+    def _execute_summarize_selected_documents(
+        self, step: ActionStep, state: ExecutionState
+    ) -> dict:
+        """
+        Execute summarization of selected high-score documents (Phase 2 Step 3).
+
+        Args:
+            step: ActionStep with params containing max_documents
+            state: ExecutionState with scored_documents
+
+        Returns:
+            Result dict with summarized_count
+        """
+        max_documents = step.params.get("max_documents", 5)
+        scored_documents = state.get("scored_documents", [])
+
+        if not scored_documents:
+            logger.info("No scored documents to summarize")
+            return {"summarized_count": 0}
+
+        # Select top documents by score
+        selected = [doc for doc in scored_documents if doc.score >= 50][:max_documents]
+
+        logger.info(f"Summarizing {len(selected)} selected documents (score >= 50)")
+
+        summarized_count = 0
+        for doc in selected:
+            logger.info(f"Processing: {doc.name} (score: {doc.score:.0f})")
+
+            try:
+                # Load and summarize PDF
+                pdf_pages = load_pdf_as_text(doc.url)
+
+                # Detect document type
+                detection_result = self.document_type_detector.invoke(
+                    {"pdf_pages": pdf_pages[:10], "url": doc.url}
+                )
+                document_type = detection_result["document_type"]
+
+                # Select summarizer
+                if document_type == "PowerPoint":
+                    summarizer_result = self.powerpoint_summarizer.invoke(
+                        {"pdf_pages": pdf_pages, "url": doc.url}
+                    )
+                else:
+                    summarizer_result = self.word_summarizer.invoke(
+                        {"pdf_pages": pdf_pages, "url": doc.url}
+                    )
+
+                summary = summarizer_result.get("summary", "")
+                title = summarizer_result.get("title", doc.name)
+
+                # Create document summary result
+                doc_summary = DocumentSummaryResult(
+                    url=doc.url,
+                    name=title,
+                    summary=summary,
+                    document_type=document_type,
+                    category=doc.category,
+                )
+
+                state["document_summaries"].append(doc_summary)
+                summarized_count += 1
+
+                logger.info(f"  ✅ Summarized: {title} ({len(summary)} chars)")
+
+            except Exception as e:
+                logger.error(f"  ❌ Failed to summarize {doc.name}: {e}")
+
+        return {"summarized_count": summarized_count}
 
     def _execute_create_meeting_summary(self, step: ActionStep, state: ExecutionState) -> dict:
         """
@@ -624,58 +938,45 @@ class ActionExecutor:
         """
         Execute summary integration step.
 
-        Combines overview + meeting summary + other document summaries into final summary.
+        Combines initial_overview + document summaries into final summary.
         """
-        overview = step.params.get("overview")
-        step.params.get("document_count", 0)
+        # Use initial_overview from state (generated in Phase 2 Step 1)
+        overview = state.get("initial_overview")
         document_summaries = state.get("document_summaries", [])
-        meeting_summary = state.get("meeting_summary")  # New: meeting summary
 
         logger.info("Integrating summaries:")
-        logger.info(f"  - Overview: {'Yes' if overview else 'No'}")
-        logger.info(f"  - Meeting summary: {'Yes' if meeting_summary else 'No'}")
+        logger.info(f"  - Initial overview: {'Yes' if overview else 'No'}")
         logger.info(f"  - Document summaries: {len(document_summaries)}")
 
         # Build integrated summary
         parts = []
 
-        # 1. Overview (if exists)
+        # 1. Overview (from Phase 2 Step 1)
         if overview:
-            parts.append(f"# 会議概要\n\n{overview}")
+            parts.append(overview)
 
-        # 2. Meeting summary (new section)
-        if meeting_summary:
-            parts.append(f"\n\n# 議事要約\n\n{meeting_summary}")
-
-        # 3. Related materials summary (excluding agenda/minutes - they're in meeting summary)
-        other_docs = [
-            doc for doc in document_summaries if doc.category not in ["agenda", "minutes"]
-        ]
-        if other_docs:
-            parts.append("\n\n# 関連資料の要約\n")
-            for i, doc_summary in enumerate(other_docs, 1):
-                parts.append(f"\n## {i}. {doc_summary.name}\n")
-                parts.append(f"**種類:** {doc_summary.document_type}\n\n")
-                parts.append(doc_summary.summary)
+        # 2. Document summaries (all processed documents)
+        if document_summaries:
+            parts.append("\n\n---\n\n## 関連資料")
+            for doc_summary in document_summaries:
+                parts.append(f"\n\n### {doc_summary.name}")
+                if doc_summary.document_type:
+                    parts.append(f"\n（{doc_summary.document_type}）")
+                parts.append(f"\n\n{doc_summary.summary}")
 
         if parts:
             integrated_summary = "\n".join(parts)
         else:
-            # No overview or summaries - should not happen
             integrated_summary = "(要約なし)"
 
         state["final_summary"] = integrated_summary
 
         logger.info(f"Integrated summary: {len(integrated_summary)} characters")
-        logger.info(
-            f"  - Agenda/minutes docs excluded: {len(document_summaries) - len(other_docs)}"
-        )
-        logger.info(f"  - Other docs included: {len(other_docs)}")
+        logger.info(f"  - Documents included: {len(document_summaries)}")
 
         return {
             "summary_length": len(integrated_summary),
             "document_count": len(document_summaries),
-            "other_docs_count": len(other_docs),
         }
 
     def _execute_finalize(self, step: ActionStep, state: ExecutionState) -> dict:

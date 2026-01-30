@@ -52,10 +52,9 @@ class ActionPlanner:
         """
         Plan for HTML meeting page.
 
-        Steps:
-        1. Call HTMLProcessor sub-agent
-        2. Discover related documents
-        3. Generate ActionPlan for document summarization
+        Phase 1 (lightweight):
+        1. Call HTMLProcessor sub-agent to extract content and discover documents
+        2. Generate ActionPlan (NO overview generation here - that's Phase 2)
         """
         input_url = state["input_url"]
         overview_only = state.get("overview_only", False)
@@ -63,12 +62,9 @@ class ActionPlanner:
         logger.info("HTML meeting page processing plan:")
         logger.info("  1. Extract main content from HTML")
         logger.info("  2. Discover related documents")
-        if overview_only:
-            logger.info("  3. Overview only mode - skip document summarization")
-        else:
-            logger.info("  3. Summarize related documents")
+        logger.info("  3. Generate action plan (no LLM calls)")
 
-        # Step 1: Extract HTML main content
+        # Step 1: Extract HTML main content (only LLM calls in Phase 1)
         try:
             html_result = self.html_processor.invoke({"url": input_url})
 
@@ -84,7 +80,9 @@ class ActionPlanner:
                 doc for doc in discovered_documents if doc.category in ["agenda", "minutes"]
             ]
             other_docs = [
-                doc for doc in discovered_documents if doc.category not in ["agenda", "minutes"]
+                doc
+                for doc in discovered_documents
+                if doc.category not in ["agenda", "minutes", "participants", "seating"]
             ]
 
             logger.info(f"Discovered {len(discovered_documents)} related documents")
@@ -93,45 +91,60 @@ class ActionPlanner:
 
             if not main_content:
                 logger.warning("Failed to extract main content from HTML")
-                # Create minimal plan with error
                 return {
-                    "overview": None,
+                    "main_content": None,
                     "discovered_documents": [],
+                    "embedded_agenda": None,
+                    "embedded_minutes": None,
                     "action_plan": ActionPlan(
                         steps=[],
                         reasoning="Failed to extract main content from HTML meeting page",
                     ),
                 }
 
-            # Generate overview from main content
-            overview = self._generate_overview_from_html(main_content, input_url)
-
-            # Build action plan
+            # Build action plan - NO overview generation in Phase 1
             steps = []
             priority = 0
 
-            if overview_only or not discovered_documents:
-                # Overview only - no document summarization
-                # But still need integrate step to set final_summary
+            if overview_only:
+                # Overview only mode - just create initial overview, no PDF processing
                 steps.append(
                     ActionStep(
-                        action_type="integrate_summaries",
+                        action_type="generate_initial_overview",
                         target=input_url,
                         params={
-                            "overview": overview,
-                            "document_count": 0,
+                            "main_content": main_content,
+                            "embedded_agenda": embedded_agenda,
+                            "embedded_minutes": embedded_minutes,
                         },
-                        priority=0,
-                        estimated_tokens=1000,
+                        priority=priority,
+                        estimated_tokens=2000,
                     )
                 )
-                reasoning = (
-                    "Overview only mode - skipping related document summarization"
-                    if overview_only
-                    else "No related documents found - overview only"
+                priority += 1
+                reasoning = "Overview only mode - generating overview from HTML content only"
+            elif not discovered_documents:
+                # No documents found - just generate overview
+                steps.append(
+                    ActionStep(
+                        action_type="generate_initial_overview",
+                        target=input_url,
+                        params={
+                            "main_content": main_content,
+                            "embedded_agenda": embedded_agenda,
+                            "embedded_minutes": embedded_minutes,
+                        },
+                        priority=priority,
+                        estimated_tokens=2000,
+                    )
                 )
+                priority += 1
+                reasoning = "No related documents found - overview only from HTML content"
             else:
-                # Step 1: Summarize meeting-related documents (agenda, minutes) first
+                # Full processing flow
+
+                # Step 1: Summarize meeting-related documents (agenda, minutes) FIRST
+                # These are processed in parallel
                 for doc in meeting_related_docs:
                     steps.append(
                         ActionStep(
@@ -139,55 +152,25 @@ class ActionPlanner:
                             target=doc.url,
                             params={
                                 "source_meeting_url": input_url,
-                                "category": doc.category,  # Pass category
+                                "category": doc.category,
                             },
-                            priority=priority,
+                            priority=priority,  # Same priority for parallel execution
                             estimated_tokens=5000,
                         )
                     )
+                # Move to next priority after all meeting docs
+                if meeting_related_docs:
                     priority += 1
 
-                # Step 2: Create meeting summary (if any meeting content exists)
-                if embedded_agenda or embedded_minutes or meeting_related_docs:
-                    steps.append(
-                        ActionStep(
-                            action_type="create_meeting_summary",
-                            target=input_url,
-                            params={
-                                "embedded_agenda": embedded_agenda,
-                                "embedded_minutes": embedded_minutes,
-                                "overview": overview,
-                            },
-                            priority=priority,
-                            estimated_tokens=3000,
-                        )
-                    )
-                    priority += 1
-
-                # Step 3: Summarize other documents (material, reference, etc.)
-                for doc in other_docs:
-                    steps.append(
-                        ActionStep(
-                            action_type="summarize_pdf",
-                            target=doc.url,
-                            params={
-                                "source_meeting_url": input_url,
-                                "category": doc.category,  # Pass category
-                            },
-                            priority=priority,
-                            estimated_tokens=5000,
-                        )
-                    )
-                    priority += 1
-
-                # Step 4: Integrate summaries
+                # Step 2: Generate initial overview (after agenda/minutes are processed)
                 steps.append(
                     ActionStep(
-                        action_type="integrate_summaries",
+                        action_type="generate_initial_overview",
                         target=input_url,
                         params={
-                            "overview": overview,
-                            "document_count": len(discovered_documents),
+                            "main_content": main_content,
+                            "embedded_agenda": embedded_agenda,
+                            "embedded_minutes": embedded_minutes,
                         },
                         priority=priority,
                         estimated_tokens=2000,
@@ -195,12 +178,56 @@ class ActionPlanner:
                 )
                 priority += 1
 
+                # Step 3: Score and select other documents
+                if other_docs:
+                    steps.append(
+                        ActionStep(
+                            action_type="score_documents",
+                            target=input_url,
+                            params={
+                                "documents": [
+                                    {"url": doc.url, "name": doc.name, "category": doc.category}
+                                    for doc in other_docs
+                                ],
+                            },
+                            priority=priority,
+                            estimated_tokens=1000,
+                        )
+                    )
+                    priority += 1
+
+                    # Step 4: Summarize selected high-score documents
+                    # (actual targets determined at runtime by score_documents)
+                    steps.append(
+                        ActionStep(
+                            action_type="summarize_selected_documents",
+                            target=input_url,
+                            params={
+                                "max_documents": 5,  # Limit to top 5
+                            },
+                            priority=priority,
+                            estimated_tokens=15000,
+                        )
+                    )
+                    priority += 1
+
                 reasoning = (
-                    f"HTML meeting page with {len(discovered_documents)} related documents "
-                    f"({len(meeting_related_docs)} agenda/minutes, {len(other_docs)} other). "
-                    f"Plan: Extract main content → Summarize meeting documents → "
-                    f"Create meeting summary → Summarize other documents → Integrate summaries."
+                    f"HTML meeting with {len(discovered_documents)} documents. "
+                    f"Flow: Process agenda/minutes PDFs → Generate initial overview → "
+                    f"Score other docs → Summarize top docs → Integrate."
                 )
+
+            # Add integration step
+            steps.append(
+                ActionStep(
+                    action_type="integrate_summaries",
+                    target=input_url,
+                    params={},
+                    priority=priority,
+                    estimated_tokens=2000,
+                )
+            )
+            priority += 1
 
             # Add finalization step
             steps.append(
@@ -233,8 +260,10 @@ class ActionPlanner:
             )
 
             return {
-                "overview": overview,
+                "main_content": main_content,
                 "discovered_documents": discovered_documents,
+                "embedded_agenda": embedded_agenda,
+                "embedded_minutes": embedded_minutes,
                 "action_plan": action_plan,
             }
 
@@ -245,8 +274,10 @@ class ActionPlanner:
             traceback.print_exc()
 
             return {
-                "overview": None,
+                "main_content": None,
                 "discovered_documents": [],
+                "embedded_agenda": None,
+                "embedded_minutes": None,
                 "action_plan": ActionPlan(
                     steps=[],
                     reasoning=f"Error during planning: {str(e)}",
@@ -280,10 +311,7 @@ class ActionPlanner:
             ActionStep(
                 action_type="integrate_summaries",
                 target=input_url,
-                params={
-                    "overview": None,  # No overview for single PDF
-                    "document_count": 1,
-                },
+                params={},
                 priority=1,
                 estimated_tokens=1000,
             ),
@@ -317,74 +345,10 @@ class ActionPlanner:
         )
 
         return {
-            "overview": None,  # No overview for single PDF
+            "main_content": None,  # No main content for single PDF
             "discovered_documents": [],
+            "embedded_agenda": None,
+            "embedded_minutes": None,
             "action_plan": action_plan,
         }
 
-    def _generate_overview_from_html(self, main_content: str, url: str) -> str:
-        """
-        Generate overview from HTML main content.
-
-        Args:
-            main_content: Extracted main content (markdown)
-            url: Source URL
-
-        Returns:
-            Generated overview text
-        """
-        from langchain.prompts import PromptTemplate
-
-        llm = self.model.llm()
-
-        logger.info("Generating overview from HTML main content...")
-
-        overview_prompt = PromptTemplate(
-            input_variables=["content", "url"],
-            template="""あなたは会議情報を要約する専門家です。以下の会議ページの内容から概要を作成してください。
-
-# 会議ページURL
-{url}
-
-# メインコンテンツ
-{content}
-
-# 要約作成手順
-
-ステップ1: 会議の基本情報を特定する
-- 会議名・委員会名
-- 開催日時・場所
-- 議題・テーマ
-
-ステップ2: 主要な内容を抽出する
-- 議論された主要論点
-- 決定事項・合意事項
-- 今後の予定・方針
-
-ステップ3: 概要を作成する
-- 会議の目的と位置づけ
-- 主要な議論内容
-- 重要な決定や方針
-- 配付資料の概要（リストがある場合）
-
-# 出力形式
-概要文のみを出力してください（Markdown不要、改行は適宜使用）
-
-# 文量
-500-1500文字程度
-
-# 制約
-- 推測や補完は行わない
-- メインコンテンツに記載されている内容のみを使用
-- 会議の性格（定例会議、臨時会議、審議会等）を明記
-""",
-        )
-
-        chain = overview_prompt | llm
-        result = chain.invoke({"content": main_content[:10000], "url": url})  # Limit to 10K chars
-
-        overview = result.content.strip()
-
-        logger.info(f"Generated overview ({len(overview)} characters)")
-
-        return overview

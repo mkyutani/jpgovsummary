@@ -116,21 +116,6 @@ def run_jpgovwatcher_v2(
     logger.info(f"  Reasoning: {action_plan.reasoning}")
     logger.info(f"  Estimated tokens: {action_plan.total_estimated_tokens}")
 
-    # If overview_only, output overview and exit
-    if overview_only:
-        overview = plan_state.get("overview", "")
-        logger.info("\nOverview only mode - outputting overview")
-
-        # Output in 2-line format
-        print(overview)
-        print(url)
-
-        return {
-            "success": True,
-            "overview": overview,
-            "final_summary": overview,
-        }
-
     # ========================================================================
     # PHASE 2: EXECUTION
     # ========================================================================
@@ -139,21 +124,33 @@ def run_jpgovwatcher_v2(
     logger.info("PHASE 2: EXECUTION")
     logger.info("="*80 + "\n")
 
-    # Initialize execution state
+    # Initialize execution state with context from Phase 1
     execution_state: ExecutionState = {
         "plan": action_plan,
         "current_step_index": 0,
         "completed_actions": [],
+        # Context from Phase 1
+        "main_content": plan_state.get("main_content"),
+        "embedded_agenda": plan_state.get("embedded_agenda"),
+        "embedded_minutes": plan_state.get("embedded_minutes"),
+        "input_url": url,
+        # Results storage
+        "initial_overview": None,
         "document_summaries": [],
+        "scored_documents": None,
         "final_summary": None,
         "final_review_summary": None,
+        # Meeting summary
         "meeting_summary": None,
         "meeting_summary_sources": None,
+        # Review
         "review_session": None,
         "review_approved": None,
         "review_completed": False,
+        # Bluesky
         "bluesky_post_content": None,
         "bluesky_post_response": None,
+        # Errors
         "errors": [],
     }
 

@@ -314,8 +314,8 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
     - `reference`: 参考資料
     - `participants`: 委員名簿、出席者名簿
     - `seating`: 座席表
-    - `disclosure_method`: 公開方法
     - `personal_material`: 個人名・団体名を含む資料
+    - `announcement`: プレスリリース、ニュース、報道発表
     - `other`: その他
 
 ステップ3: 相対パスを絶対パスに変換

@@ -23,7 +23,9 @@ class ActionStep(BaseModel):
         "summarize_pdf",
         "extract_html",
         "detect_document_type",
-        "create_meeting_summary",
+        "generate_initial_overview",
+        "score_documents",
+        "summarize_selected_documents",
         "integrate_summaries",
         "finalize",
         "post_to_bluesky",
@@ -63,7 +65,7 @@ class DiscoveredDocument(BaseModel):
     url: str = Field(description="Document URL (absolute path)")
     name: str = Field(description="Document name/link text")
     category: str = Field(
-        description="Document category: agenda, minutes, executive_summary, material, reference, participants, seating, disclosure_method, personal_material, other"
+        description="Document category: agenda, minutes, executive_summary, material, reference, participants, seating, personal_material, announcement, other"
     )
 
 
@@ -128,20 +130,29 @@ class PlanState(TypedDict):
     input_url: str  # Source URL or file path
     input_type: Literal["html_meeting", "pdf_file"]  # Type of input
 
-    # Planning outputs
-    overview: str | None  # Generated overview/initial summary
+    # Planning outputs (no LLM-generated content in Phase 1)
+    main_content: str | None  # Extracted main content from HTML (raw)
     discovered_documents: list[DiscoveredDocument] | None  # Related documents found
     action_plan: ActionPlan | None  # Generated execution plan
 
     # Meeting summary components (extracted from HTML)
     embedded_agenda: str | None  # Agenda content from HTML main content
     embedded_minutes: str | None  # Minutes content from HTML main content
-    meeting_summary: str | None  # Integrated meeting summary
 
     # Control flags (inherited from CLI)
     batch: bool  # Run without human interaction
     skip_bluesky_posting: bool  # Skip Bluesky posting
     overview_only: bool  # Generate overview only, skip related documents
+
+
+class ScoredDocument(BaseModel):
+    """Document with scoring information for prioritization."""
+
+    url: str
+    name: str
+    category: str
+    score: float = Field(description="Priority score (higher = more important)")
+    reason: str = Field(description="Reason for the score")
 
 
 class ExecutionState(TypedDict):
@@ -159,8 +170,16 @@ class ExecutionState(TypedDict):
     current_step_index: int  # Index of current step being executed
     completed_actions: list[CompletedAction]  # History of completed actions
 
+    # Context from Phase 1 (carried over from PlanState)
+    main_content: str | None  # Main content extracted from HTML
+    embedded_agenda: str | None  # Agenda content from HTML
+    embedded_minutes: str | None  # Minutes content from HTML
+    input_url: str  # Source URL
+
     # Results storage (lightweight - only final outputs)
+    initial_overview: str | None  # Overview generated in Phase 2 Step 1
     document_summaries: list[DocumentSummaryResult]  # Summaries from sub-agents
+    scored_documents: list[ScoredDocument] | None  # Documents after scoring
     final_summary: str | None  # Integrated final summary
     final_review_summary: str | None  # Human-reviewed summary (if not batch)
 
