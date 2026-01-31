@@ -5,8 +5,11 @@ This module contains the planning agent that analyzes input (HTML meeting page
 or PDF file) and generates an ActionPlan with prioritized execution steps.
 """
 
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
 from .. import Model, logger
-from ..state_v2 import ActionPlan, ActionStep, PlanState
+from ..state_v2 import ActionPlan, ActionStep, PlanState, ScoredDocument
 from ..subagents import HTMLProcessor
 
 
@@ -153,6 +156,7 @@ class ActionPlanner:
                             params={
                                 "source_meeting_url": input_url,
                                 "category": doc.category,
+                                "doc_name": doc.name,  # Store document name for display
                             },
                             priority=priority,  # Same priority for parallel execution
                             estimated_tokens=5000,
@@ -178,43 +182,40 @@ class ActionPlanner:
                 )
                 priority += 1
 
-                # Step 3: Score and select other documents
+                # Step 3: Score and select other documents in Phase 1
+                # (No longer deferred to Phase 2)
+                scored_docs: list[ScoredDocument] = []
                 if other_docs:
-                    steps.append(
-                        ActionStep(
-                            action_type="score_documents",
-                            target=input_url,
-                            params={
-                                "documents": [
-                                    {"url": doc.url, "name": doc.name, "category": doc.category}
-                                    for doc in other_docs
-                                ],
-                            },
-                            priority=priority,
-                            estimated_tokens=1000,
-                        )
-                    )
-                    priority += 1
+                    logger.info("Phase 1でスコアリングを実行...")
+                    scored_docs = self._score_documents(other_docs, main_content)
 
-                    # Step 4: Summarize selected high-score documents
-                    # (actual targets determined at runtime by score_documents)
-                    steps.append(
-                        ActionStep(
-                            action_type="summarize_selected_documents",
-                            target=input_url,
-                            params={
-                                "max_documents": 5,  # Limit to top 5
-                            },
-                            priority=priority,
-                            estimated_tokens=15000,
-                        )
-                    )
-                    priority += 1
+                    # Select top 5 documents with score >= 50
+                    selected_docs = [d for d in scored_docs if d.score >= 50][:5]
+
+                    # Step 4: Create summarize_pdf steps for each selected document
+                    # These are processed in parallel (same priority)
+                    if selected_docs:
+                        for doc in selected_docs:
+                            steps.append(
+                                ActionStep(
+                                    action_type="summarize_pdf",
+                                    target=doc.url,
+                                    params={
+                                        "source_meeting_url": input_url,
+                                        "category": doc.category,
+                                        "doc_name": doc.name,  # Store document name for display
+                                        "score": doc.score,
+                                    },
+                                    priority=priority,  # Same priority for parallel execution
+                                    estimated_tokens=5000,
+                                )
+                            )
+                        priority += 1
 
                 reasoning = (
                     f"HTML meeting with {len(discovered_documents)} documents. "
                     f"Flow: Process agenda/minutes PDFs → Generate initial overview → "
-                    f"Score other docs → Summarize top docs → Integrate."
+                    f"Summarize {len(selected_docs) if other_docs else 0} selected docs → Integrate."
                 )
 
             # Add integration step
@@ -258,6 +259,9 @@ class ActionPlanner:
                 reasoning=reasoning,
                 total_estimated_tokens=sum(s.estimated_tokens or 0 for s in steps),
             )
+
+            # Output action plan in Japanese
+            self._log_action_plan_japanese(action_plan)
 
             return {
                 "main_content": main_content,
@@ -344,6 +348,9 @@ class ActionPlanner:
             total_estimated_tokens=sum(s.estimated_tokens or 0 for s in steps),
         )
 
+        # Output action plan in Japanese
+        self._log_action_plan_japanese(action_plan)
+
         return {
             "main_content": None,  # No main content for single PDF
             "discovered_documents": [],
@@ -352,3 +359,168 @@ class ActionPlanner:
             "action_plan": action_plan,
         }
 
+    def _score_documents(
+        self, documents: list, main_content: str
+    ) -> list[ScoredDocument]:
+        """
+        Score documents in Phase 1 using main content as context.
+
+        Args:
+            documents: List of DiscoveredDocument to score
+            main_content: Main content from HTML for context
+
+        Returns:
+            List of ScoredDocument sorted by score (descending)
+        """
+        if not documents:
+            return []
+
+        logger.info(f"Phase 1: スコアリング中 ({len(documents)}件の資料)")
+
+        llm = self.model.llm()
+
+        score_prompt = PromptTemplate(
+            input_variables=["content", "documents"],
+            template="""あなたは会議資料の重要度を判定する専門家です。
+
+# 会議ページの内容
+{content}
+
+# 資料リスト
+{documents}
+
+# 判定基準
+以下の基準でスコア（0-100）を付けてください：
+- 会議の主要議題に関連する資料: 80-100
+- 政策・方針に関する資料: 70-90
+- データ・統計資料: 60-80
+- 参考資料・背景資料: 40-60
+- 委員個人提出資料: 30-50
+- 名簿・座席表等の形式資料: 0-20
+- パブリックコメント、意見募集資料: 20-40
+
+# 出力形式
+JSON配列で出力してください：
+[
+  {{"url": "資料URL", "name": "資料名", "score": スコア, "reason": "理由"}},
+  ...
+]
+
+# 注意
+- 全ての資料にスコアを付けてください
+- スコアは整数で
+""",
+        )
+
+        # Format documents for prompt
+        doc_list = "\n".join(
+            [f"- [{doc.category}] {doc.name}: {doc.url}" for doc in documents]
+        )
+
+        try:
+            parser = JsonOutputParser()
+            chain = score_prompt | llm | parser
+
+            result = chain.invoke(
+                {
+                    "content": main_content[:8000] if main_content else "(内容なし)",
+                    "documents": doc_list,
+                }
+            )
+
+            # Convert to ScoredDocument list
+            scored_documents = []
+            for item in result:
+                # Find original document to get category
+                original_doc = next(
+                    (d for d in documents if d.url == item.get("url")), None
+                )
+                category = original_doc.category if original_doc else "unknown"
+
+                scored_documents.append(
+                    ScoredDocument(
+                        url=item.get("url", ""),
+                        name=item.get("name", ""),
+                        category=category,
+                        score=float(item.get("score", 0)),
+                        reason=item.get("reason", ""),
+                    )
+                )
+
+            # Sort by score descending
+            scored_documents.sort(key=lambda x: x.score, reverse=True)
+
+            logger.info(f"スコアリング完了: {len(scored_documents)}件")
+            for doc in scored_documents[:5]:
+                logger.info(f"  - {doc.score:.0f}点: {doc.name}")
+
+            return scored_documents
+
+        except Exception as e:
+            logger.error(f"スコアリング中にエラー: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return []
+
+    def _log_action_plan_japanese(self, action_plan: ActionPlan) -> None:
+        """
+        Output action plan as Japanese bullet list.
+
+        Args:
+            action_plan: ActionPlan to log
+        """
+        # Action type to Japanese mapping
+        action_type_ja = {
+            "summarize_pdf": "PDF要約",
+            "generate_initial_overview": "概要生成",
+            "integrate_summaries": "要約統合",
+            "finalize": "最終化",
+            "post_to_bluesky": "Bluesky投稿",
+        }
+
+        # Category to Japanese mapping
+        category_ja_map = {
+            "agenda": "議事次第",
+            "minutes": "議事録",
+            "executive_summary": "とりまとめ",
+            "material": "資料",
+            "reference": "参考資料",
+        }
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("📋 アクションプラン")
+        logger.info("=" * 60)
+
+        for i, step in enumerate(action_plan.steps, 1):
+            action_ja = action_type_ja.get(step.action_type, step.action_type)
+
+            # Build step description
+            if step.action_type == "summarize_pdf":
+                # Use doc_name from params if available, otherwise fallback to file name
+                doc_name = step.params.get("doc_name")
+                category = step.params.get("category", "")
+                category_ja = category_ja_map.get(category, "")
+
+                if doc_name:
+                    # Abbreviate long document names (max 30 chars)
+                    display_name = doc_name[:30] + "..." if len(doc_name) > 30 else doc_name
+                else:
+                    # Fallback to file name
+                    display_name = (
+                        step.target.split("/")[-1] if "/" in step.target else step.target
+                    )
+
+                if category_ja:
+                    desc = f"{action_ja}: {display_name} ({category_ja})"
+                else:
+                    desc = f"{action_ja}: {display_name}"
+            else:
+                desc = action_ja
+
+            logger.info(f"  {i}. {desc}")
+
+        logger.info("")
+        logger.info(f"合計ステップ数: {len(action_plan.steps)}")
+        logger.info("=" * 60)

@@ -16,7 +16,6 @@ from ..state_v2 import (
     CompletedAction,
     DocumentSummaryResult,
     ExecutionState,
-    ScoredDocument,
 )
 from ..subagents import DocumentTypeDetector, PowerPointSummarizer, WordSummarizer
 from ..tools.pdf_loader import load_pdf_as_text
@@ -399,10 +398,6 @@ class ActionExecutor:
             return self._execute_summarize_pdf(step, state)
         elif step.action_type == "generate_initial_overview":
             return self._execute_generate_initial_overview(step, state)
-        elif step.action_type == "score_documents":
-            return self._execute_score_documents(step, state)
-        elif step.action_type == "summarize_selected_documents":
-            return self._execute_summarize_selected_documents(step, state)
         elif step.action_type == "integrate_summaries":
             return self._execute_integrate_summaries(step, state)
         elif step.action_type == "finalize":
@@ -636,189 +631,6 @@ class ActionExecutor:
             traceback.print_exc()
             state["initial_overview"] = "(概要生成エラー)"
             return {"overview_length": 0, "error": str(e)}
-
-    def _execute_score_documents(self, step: ActionStep, state: ExecutionState) -> dict:
-        """
-        Execute document scoring (Phase 2 Step 2).
-
-        Scores documents based on:
-        1. Initial overview context
-        2. Document category and name
-        3. Relevance to meeting content
-
-        Args:
-            step: ActionStep with params containing documents list
-            state: ExecutionState with initial_overview
-
-        Returns:
-            Result dict with scored_count
-        """
-        documents = step.params.get("documents", [])
-        initial_overview = state.get("initial_overview", "")
-
-        logger.info(f"Scoring {len(documents)} documents")
-
-        if not documents:
-            state["scored_documents"] = []
-            return {"scored_count": 0}
-
-        # Use LLM to score documents
-        llm = self.model.llm()
-
-        from langchain.prompts import PromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
-
-        score_prompt = PromptTemplate(
-            input_variables=["overview", "documents"],
-            template="""あなたは会議資料の重要度を判定する専門家です。
-
-# 会議概要
-{overview}
-
-# 資料リスト
-{documents}
-
-# 判定基準
-以下の基準でスコア（0-100）を付けてください：
-- 会議の主要議題に関連する資料: 80-100
-- 政策・方針に関する資料: 70-90
-- データ・統計資料: 60-80
-- 参考資料・背景資料: 40-60
-- 委員個人提出資料: 30-50
-- 名簿・座席表等の形式資料: 0-20
-
-# 出力形式
-JSON配列で出力してください：
-[
-  {{"url": "資料URL", "name": "資料名", "score": スコア, "reason": "理由"}},
-  ...
-]
-
-# 注意
-- 全ての資料にスコアを付けてください
-- スコアは整数で
-""",
-        )
-
-        # Format documents for prompt
-        doc_list = "\n".join([f"- [{d['category']}] {d['name']}: {d['url']}" for d in documents])
-
-        try:
-            parser = JsonOutputParser()
-            chain = score_prompt | llm | parser
-
-            result = chain.invoke(
-                {
-                    "overview": initial_overview[:5000] if initial_overview else "(概要なし)",
-                    "documents": doc_list,
-                }
-            )
-
-            # Convert to ScoredDocument list
-            scored_documents = []
-            for item in result:
-                scored_documents.append(
-                    ScoredDocument(
-                        url=item.get("url", ""),
-                        name=item.get("name", ""),
-                        category=next(
-                            (d["category"] for d in documents if d["url"] == item.get("url")),
-                            "unknown",
-                        ),
-                        score=float(item.get("score", 0)),
-                        reason=item.get("reason", ""),
-                    )
-                )
-
-            # Sort by score descending
-            scored_documents.sort(key=lambda x: x.score, reverse=True)
-
-            logger.info(f"Scored {len(scored_documents)} documents")
-            for doc in scored_documents[:5]:
-                logger.info(f"  - {doc.score:.0f}: {doc.name}")
-
-            state["scored_documents"] = scored_documents
-
-            return {"scored_count": len(scored_documents)}
-
-        except Exception as e:
-            logger.error(f"Error scoring documents: {e}")
-            import traceback
-
-            traceback.print_exc()
-            state["scored_documents"] = []
-            return {"scored_count": 0, "error": str(e)}
-
-    def _execute_summarize_selected_documents(
-        self, step: ActionStep, state: ExecutionState
-    ) -> dict:
-        """
-        Execute summarization of selected high-score documents (Phase 2 Step 3).
-
-        Args:
-            step: ActionStep with params containing max_documents
-            state: ExecutionState with scored_documents
-
-        Returns:
-            Result dict with summarized_count
-        """
-        max_documents = step.params.get("max_documents", 5)
-        scored_documents = state.get("scored_documents", [])
-
-        if not scored_documents:
-            logger.info("No scored documents to summarize")
-            return {"summarized_count": 0}
-
-        # Select top documents by score
-        selected = [doc for doc in scored_documents if doc.score >= 50][:max_documents]
-
-        logger.info(f"Summarizing {len(selected)} selected documents (score >= 50)")
-
-        summarized_count = 0
-        for doc in selected:
-            logger.info(f"Processing: {doc.name} (score: {doc.score:.0f})")
-
-            try:
-                # Load and summarize PDF
-                pdf_pages = load_pdf_as_text(doc.url)
-
-                # Detect document type
-                detection_result = self.document_type_detector.invoke(
-                    {"pdf_pages": pdf_pages[:10], "url": doc.url}
-                )
-                document_type = detection_result["document_type"]
-
-                # Select summarizer
-                if document_type == "PowerPoint":
-                    summarizer_result = self.powerpoint_summarizer.invoke(
-                        {"pdf_pages": pdf_pages, "url": doc.url}
-                    )
-                else:
-                    summarizer_result = self.word_summarizer.invoke(
-                        {"pdf_pages": pdf_pages, "url": doc.url}
-                    )
-
-                summary = summarizer_result.get("summary", "")
-                title = summarizer_result.get("title", doc.name)
-
-                # Create document summary result
-                doc_summary = DocumentSummaryResult(
-                    url=doc.url,
-                    name=title,
-                    summary=summary,
-                    document_type=document_type,
-                    category=doc.category,
-                )
-
-                state["document_summaries"].append(doc_summary)
-                summarized_count += 1
-
-                logger.info(f"  ✅ Summarized: {title} ({len(summary)} chars)")
-
-            except Exception as e:
-                logger.error(f"  ❌ Failed to summarize {doc.name}: {e}")
-
-        return {"summarized_count": summarized_count}
 
     def _execute_create_meeting_summary(self, step: ActionStep, state: ExecutionState) -> dict:
         """
