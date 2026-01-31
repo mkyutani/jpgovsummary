@@ -714,7 +714,7 @@ def word_based_summarize(texts: list[str]) -> dict:
     table_of_contents = extract_word_table_of_contents(texts)
 
     # ステップ3: 目次から要約を作成
-    if table_of_contents and table_of_contents != "目次なし":
+    if table_of_contents and "目次なし" not in table_of_contents:
         logger.info("目次から要約を作成します")
         summary = create_summary_from_toc(title, table_of_contents)
     else:

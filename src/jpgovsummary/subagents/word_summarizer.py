@@ -194,7 +194,7 @@ class WordSummarizer:
 
         extracted_toc = result.content.strip()
 
-        if extracted_toc and extracted_toc != "目次なし":
+        if extracted_toc and "目次なし" not in extracted_toc:
             logger.info("目次を抽出しました")
             logger.info(f"目次内容:\n{extracted_toc[:500]}...")
         else:
@@ -224,12 +224,12 @@ class WordSummarizer:
             for toc_item in table_of_contents:
                 if toc_item.get("type") == "toc":
                     toc_content = toc_item.get("content", "")
-                    if toc_content and toc_content != "目次なし":
+                    if toc_content and "目次なし" not in toc_content:
                         has_toc = True
                     break
 
         if not has_toc:
-            logger.info("目次がないため、全ページ対象とします")
+            logger.info("目次がないため、全ページから要約を作成します")
             # Mark that full text will be used (handled in generate_summary)
             return {}
 
@@ -478,12 +478,12 @@ class WordSummarizer:
             chain = summary_prompt | llm
             result = chain.invoke({
                 "title": title,
-                "toc": toc_content if toc_content != "目次なし" else "（目次なし）",
+                "toc": toc_content if "目次なし" not in toc_content else "（目次なし）",
                 "content": selected_text
             })
             summary = result.content.strip()
 
-        elif toc_content and toc_content != "目次なし":
+        elif toc_content and "目次なし" not in toc_content:
             # TOC-only summarization
             logger.info("目次のみから要約を作成します")
 
