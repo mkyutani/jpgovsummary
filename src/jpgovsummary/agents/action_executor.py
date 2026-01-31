@@ -46,6 +46,54 @@ class ActionExecutor:
         self.powerpoint_summarizer = PowerPointSummarizer(model=self.model)
         self.word_summarizer = WordSummarizer(model=self.model)
 
+        # Japanese descriptions for action types
+        self._action_type_ja = {
+            "summarize_pdf": "PDF要約",
+            "generate_initial_overview": "概要生成",
+            "integrate_summaries": "要約統合",
+            "finalize": "最終化",
+            "post_to_bluesky": "Bluesky投稿",
+        }
+
+        # Japanese category names
+        self._category_ja = {
+            "agenda": "議事次第",
+            "minutes": "議事録",
+            "executive_summary": "とりまとめ",
+            "material": "資料",
+            "reference": "参考資料",
+            "announcement": "お知らせ",
+        }
+
+    def _get_step_description_ja(self, step: ActionStep) -> str:
+        """
+        Get Japanese description for an action step.
+
+        Args:
+            step: ActionStep to describe
+
+        Returns:
+            Japanese description string
+        """
+        action_ja = self._action_type_ja.get(step.action_type, step.action_type)
+
+        if step.action_type == "summarize_pdf":
+            doc_name = step.params.get("doc_name")
+            category = step.params.get("category", "")
+            category_ja = self._category_ja.get(category, "")
+
+            if doc_name:
+                display_name = doc_name[:30] + "..." if len(doc_name) > 30 else doc_name
+            else:
+                display_name = step.target.split("/")[-1] if "/" in step.target else step.target
+
+            if category_ja:
+                return f"{action_ja}: {display_name} ({category_ja})"
+            else:
+                return f"{action_ja}: {display_name}"
+        else:
+            return action_ja
+
     def execute_plan(self, state: ExecutionState) -> ExecutionState:
         """
         Execute all steps in the action plan.
@@ -86,10 +134,9 @@ class ActionExecutor:
                 # Already executed
                 continue
 
-            logger.info(f"\n{'=' * 80}")
-            logger.info(f"Executing step {i + 1}/{len(plan.steps)}: {step.action_type}")
-            logger.info(f"Target: {step.target}")
-            logger.info(f"{'=' * 80}\n")
+            step_desc = self._get_step_description_ja(step)
+            logger.info("")
+            logger.info(f"[{i + 1}/{len(plan.steps)}] {step_desc}")
 
             try:
                 result = self._execute_step(step, state)
@@ -106,10 +153,10 @@ class ActionExecutor:
                 state["completed_actions"].append(completed_action)
                 state["current_step_index"] = i + 1
 
-                logger.info(f"✅ Step {i + 1} completed successfully")
+                logger.info("  ✅ 完了")
 
             except Exception as e:
-                logger.error(f"❌ Step {i + 1} failed: {e}")
+                logger.error(f"  ❌ 失敗: {e}")
                 import traceback
 
                 traceback.print_exc()
@@ -129,13 +176,15 @@ class ActionExecutor:
                 # Continue to next step (don't fail entire plan)
                 continue
 
-        logger.info(f"\n{'=' * 80}")
-        logger.info("Plan execution completed")
-        logger.info(
-            f"Successful steps: {sum(1 for a in state['completed_actions'] if a.success)}/{len(plan.steps)}"
-        )
-        logger.info(f"Failed steps: {len(state['errors'])}")
-        logger.info(f"{'=' * 80}\n")
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("📋 実行完了")
+        logger.info("=" * 60)
+        success_count = sum(1 for a in state["completed_actions"] if a.success)
+        logger.info(f"  成功: {success_count}/{len(plan.steps)}件")
+        if state["errors"]:
+            logger.info(f"  失敗: {len(state['errors'])}件")
+        logger.info("=" * 60)
 
         return state
 
@@ -178,23 +227,23 @@ class ActionExecutor:
 
             # Execute parallel steps
             if len(parallel_steps) > 1:
-                logger.info(f"\n{'=' * 80}")
-                logger.info(
-                    f"Parallel execution: {len(parallel_steps)} PDF summarizations (priority {priority})"
-                )
-                logger.info(f"{'=' * 80}\n")
+                # Log each parallel step with Japanese description
+                logger.info("")
+                logger.info(f"並列実行開始: {len(parallel_steps)}件のPDF要約")
+                for idx, step in parallel_steps:
+                    step_desc = self._get_step_description_ja(step)
+                    logger.info(f"  [{idx + 1}/{total_steps}] {step_desc}")
 
                 results = self._execute_steps_parallel(parallel_steps, state)
 
                 for (idx, step), result in zip(parallel_steps, results, strict=True):
                     step_count += 1
+                    step_desc = self._get_step_description_ja(step)
                     if result.get("success", False):
-                        logger.info(
-                            f"✅ Step {idx + 1}/{total_steps} completed: {step.target.split('/')[-1]}"
-                        )
+                        logger.info(f"  ✅ [{idx + 1}] {step_desc} 完了")
                     else:
                         logger.error(
-                            f"❌ Step {idx + 1}/{total_steps} failed: {result.get('error', 'Unknown')}"
+                            f"  ❌ [{idx + 1}] {step_desc} 失敗: {result.get('error', 'Unknown')}"
                         )
 
             elif len(parallel_steps) == 1:
@@ -204,10 +253,9 @@ class ActionExecutor:
             # Execute sequential steps
             for idx, step in sequential_steps:
                 step_count += 1
-                logger.info(f"\n{'=' * 80}")
-                logger.info(f"Executing step {idx + 1}/{total_steps}: {step.action_type}")
-                logger.info(f"Target: {step.target}")
-                logger.info(f"{'=' * 80}\n")
+                step_desc = self._get_step_description_ja(step)
+                logger.info("")
+                logger.info(f"[{idx + 1}/{total_steps}] {step_desc}")
 
                 try:
                     result = self._execute_step(step, state)
@@ -221,10 +269,10 @@ class ActionExecutor:
                     state["completed_actions"].append(completed_action)
                     state["current_step_index"] = idx + 1
 
-                    logger.info(f"✅ Step {idx + 1} completed successfully")
+                    logger.info("  ✅ 完了")
 
                 except Exception as e:
-                    logger.error(f"❌ Step {idx + 1} failed: {e}")
+                    logger.error(f"  ❌ 失敗: {e}")
                     import traceback
 
                     traceback.print_exc()
@@ -239,13 +287,15 @@ class ActionExecutor:
                     state["errors"].append(f"Step {idx + 1} ({step.action_type}): {str(e)}")
                     state["current_step_index"] = idx + 1
 
-        logger.info(f"\n{'=' * 80}")
-        logger.info("Plan execution completed (parallel mode)")
-        logger.info(
-            f"Successful steps: {sum(1 for a in state['completed_actions'] if a.success)}/{total_steps}"
-        )
-        logger.info(f"Failed steps: {len(state['errors'])}")
-        logger.info(f"{'=' * 80}\n")
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("📋 実行完了")
+        logger.info("=" * 60)
+        success_count = sum(1 for a in state["completed_actions"] if a.success)
+        logger.info(f"  成功: {success_count}/{total_steps}件")
+        if state["errors"]:
+            logger.info(f"  失敗: {len(state['errors'])}件")
+        logger.info("=" * 60)
 
         return state
 
