@@ -382,14 +382,17 @@ class ActionExecutor:
         """
         url = step.target
         category = step.params.get("category")
+        doc_name = step.params.get("doc_name", url.split("/")[-1])
+        # Truncate long names for log prefix
+        log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
 
-        logger.info(f"[Parallel] Loading PDF: {url.split('/')[-1]}")
+        logger.info(f"  [{log_prefix}] PDF読み込み中...")
         pdf_pages = load_pdf_as_text(url)
-        logger.info(f"[Parallel] Loaded {len(pdf_pages)} pages from {url.split('/')[-1]}")
+        logger.info(f"  [{log_prefix}] {len(pdf_pages)}ページ読み込み完了")
 
         # For agenda documents, skip LLM and use raw PDF text
         if category == "agenda":
-            logger.info("[Parallel] Agenda document - using raw PDF text (no LLM)")
+            logger.info(f"  [{log_prefix}] 議事次第 - PDFテキストをそのまま使用")
             summary = "\n\n".join(pdf_pages)
             title = url.split("/")[-1].replace(".pdf", "")
             document_type = "Agenda"
@@ -400,7 +403,7 @@ class ActionExecutor:
             )
 
             document_type = detection_result["document_type"]
-            logger.info(f"[Parallel] Detected type: {document_type} for {url.split('/')[-1]}")
+            logger.info(f"  [{log_prefix}] 文書タイプ: {document_type}")
 
             # Select appropriate summarizer
             if document_type == "PowerPoint":
@@ -423,7 +426,7 @@ class ActionExecutor:
             category=category,
         )
 
-        logger.info(f"[Parallel] Completed: {title} ({len(summary)} chars)")
+        logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
         return {
             "document_type": document_type,
