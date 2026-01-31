@@ -55,6 +55,15 @@ class ActionExecutor:
             "post_to_bluesky": "Bluesky投稿",
         }
 
+        # Emojis for action types
+        self._action_emoji = {
+            "summarize_pdf": "📄",
+            "generate_initial_overview": "📝",
+            "integrate_summaries": "🔗",
+            "finalize": "✨",
+            "post_to_bluesky": "🦋",
+        }
+
         # Japanese category names
         self._category_ja = {
             "agenda": "議事次第",
@@ -67,15 +76,16 @@ class ActionExecutor:
 
     def _get_step_description_ja(self, step: ActionStep) -> str:
         """
-        Get Japanese description for an action step.
+        Get Japanese description for an action step with emoji.
 
         Args:
             step: ActionStep to describe
 
         Returns:
-            Japanese description string
+            Japanese description string with emoji prefix
         """
         action_ja = self._action_type_ja.get(step.action_type, step.action_type)
+        emoji = self._action_emoji.get(step.action_type, "▶️")
 
         if step.action_type == "summarize_pdf":
             doc_name = step.params.get("doc_name")
@@ -88,11 +98,11 @@ class ActionExecutor:
                 display_name = step.target.split("/")[-1] if "/" in step.target else step.target
 
             if category_ja:
-                return f"{action_ja}: {display_name} ({category_ja})"
+                return f"{emoji} {action_ja}: {display_name} ({category_ja})"
             else:
-                return f"{action_ja}: {display_name}"
+                return f"{emoji} {action_ja}: {display_name}"
         else:
-            return action_ja
+            return f"{emoji} {action_ja}"
 
     def execute_plan(self, state: ExecutionState) -> ExecutionState:
         """
