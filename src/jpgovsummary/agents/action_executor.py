@@ -396,24 +396,22 @@ class ActionExecutor:
         # Truncate long names for log prefix
         log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
 
-        logger.info(f"  [{log_prefix}] PDF読み込み中...")
-        pdf_pages = load_pdf_as_text(url)
-        logger.info(f"  [{log_prefix}] {len(pdf_pages)}ページ読み込み完了")
-
         # For agenda documents, skip LLM and use raw PDF text
         if category == "agenda":
-            logger.info(f"  [{log_prefix}] 議事次第 - PDFテキストをそのまま使用")
+            logger.info(f"  {log_prefix}：目次のみから要約を作成します")
+            pdf_pages = load_pdf_as_text(url)
             summary = "\n\n".join(pdf_pages)
             title = url.split("/")[-1].replace(".pdf", "")
             document_type = "Agenda"
         else:
+            logger.info(f"  {log_prefix}の要約を作成中...")
+            pdf_pages = load_pdf_as_text(url)
             # Detect document type
             detection_result = self.document_type_detector.invoke(
                 {"pdf_pages": pdf_pages[:10], "url": url}
             )
 
             document_type = detection_result["document_type"]
-            logger.info(f"  [{log_prefix}] 文書タイプ: {document_type}")
 
             # Select appropriate summarizer
             if document_type == "PowerPoint":
@@ -436,7 +434,7 @@ class ActionExecutor:
             category=category,
         )
 
-        logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
+        logger.info(f"  {log_prefix}：要約完了 ({len(summary)}文字)")
 
         # Output generated summary
         logger.info(f"  [{log_prefix}] --- 要約内容 ---")
