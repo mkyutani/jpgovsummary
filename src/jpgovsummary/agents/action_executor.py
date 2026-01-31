@@ -438,6 +438,14 @@ class ActionExecutor:
 
         logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
+        # Output generated summary
+        logger.info(f"  [{log_prefix}] --- 要約内容 ---")
+        # Truncate long summaries for log output
+        summary_preview = summary[:1000] + "..." if len(summary) > 1000 else summary
+        for line in summary_preview.split("\n"):
+            logger.info(f"  [{log_prefix}]   {line}")
+        logger.info(f"  [{log_prefix}] ----------------")
+
         return {
             "document_type": document_type,
             "summary_length": len(summary),
@@ -560,6 +568,16 @@ class ActionExecutor:
 
         # Store in state
         state["document_summaries"].append(doc_summary)
+
+        # Output generated summary
+        doc_name = step.params.get("doc_name", url.split("/")[-1])
+        log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
+        logger.info(f"  [{log_prefix}] --- 要約内容 ---")
+        # Truncate long summaries for log output
+        summary_preview = summary[:1000] + "..." if len(summary) > 1000 else summary
+        for line in summary_preview.split("\n"):
+            logger.info(f"  [{log_prefix}]   {line}")
+        logger.info(f"  [{log_prefix}] ----------------")
 
         return {
             "document_type": document_type,
