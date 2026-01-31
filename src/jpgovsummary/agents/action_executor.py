@@ -440,9 +440,7 @@ class ActionExecutor:
 
         # Output generated summary
         logger.info(f"  [{log_prefix}] --- 要約内容 ---")
-        # Truncate long summaries for log output
-        summary_preview = summary[:1000] + "..." if len(summary) > 1000 else summary
-        for line in summary_preview.split("\n"):
+        for line in summary.split("\n"):
             logger.info(f"  [{log_prefix}]   {line}")
         logger.info(f"  [{log_prefix}] ----------------")
 
@@ -573,9 +571,7 @@ class ActionExecutor:
         doc_name = step.params.get("doc_name", url.split("/")[-1])
         log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
         logger.info(f"  [{log_prefix}] --- 要約内容 ---")
-        # Truncate long summaries for log output
-        summary_preview = summary[:1000] + "..." if len(summary) > 1000 else summary
-        for line in summary_preview.split("\n"):
+        for line in summary.split("\n"):
             logger.info(f"  [{log_prefix}]   {line}")
         logger.info(f"  [{log_prefix}] ----------------")
 
