@@ -672,6 +672,14 @@ class ActionExecutor:
             # Store in state
             state["initial_overview"] = overview
 
+            # Output generated overview
+            logger.info("")
+            logger.info("-" * 40)
+            logger.info("生成された概要:")
+            logger.info("-" * 40)
+            logger.info(overview)
+            logger.info("-" * 40)
+
             return {"overview_length": len(overview)}
 
         except Exception as e:
