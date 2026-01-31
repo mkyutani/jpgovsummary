@@ -20,6 +20,25 @@ class ActionPlanner:
     Analyzes input and generates execution plan with prioritized steps.
     """
 
+    # Categories eligible for scoring (others are excluded)
+    SCORABLE_CATEGORIES = ["material", "executive_summary", "announcement"]
+
+    # Categories excluded from scoring
+    EXCLUDED_CATEGORIES = ["personal_material", "participants", "seating", "reference", "other"]
+
+    # Name patterns that indicate low-priority documents (excluded from scoring)
+    EXCLUDED_NAME_PATTERNS = [
+        "振り返り",
+        "振返り",
+        "前回",
+        "これまで",
+        "パブリックコメント",
+        "パブコメ",
+        "意見募集",
+        "意見公募",
+        "参考配布",
+    ]
+
     def __init__(self, model: Model | None = None):
         """
         Initialize ActionPlanner.
@@ -82,15 +101,16 @@ class ActionPlanner:
             meeting_related_docs = [
                 doc for doc in discovered_documents if doc.category in ["agenda", "minutes"]
             ]
-            other_docs = [
-                doc
-                for doc in discovered_documents
-                if doc.category not in ["agenda", "minutes", "participants", "seating"]
-            ]
+
+            # Filter documents for scoring
+            scorable_docs, excluded_docs = self._filter_documents_for_scoring(
+                discovered_documents
+            )
 
             logger.info(f"Discovered {len(discovered_documents)} related documents")
             logger.info(f"  - Meeting-related: {len(meeting_related_docs)} (agenda/minutes)")
-            logger.info(f"  - Other documents: {len(other_docs)}")
+            logger.info(f"  - Scorable: {len(scorable_docs)}")
+            logger.info(f"  - Excluded: {len(excluded_docs)}")
 
             if not main_content:
                 logger.warning("Failed to extract main content from HTML")
@@ -182,15 +202,18 @@ class ActionPlanner:
                 )
                 priority += 1
 
-                # Step 3: Score and select other documents in Phase 1
+                # Step 3: Score and select documents in Phase 1
                 # (No longer deferred to Phase 2)
                 scored_docs: list[ScoredDocument] = []
-                if other_docs:
+                selected_docs: list[ScoredDocument] = []
+                if scorable_docs:
                     logger.info("Phase 1でスコアリングを実行...")
-                    scored_docs = self._score_documents(other_docs, main_content)
+                    scored_docs = self._score_documents(
+                        scorable_docs, excluded_docs, main_content
+                    )
 
-                    # Select top 5 documents with score >= 50
-                    selected_docs = [d for d in scored_docs if d.score >= 50][:5]
+                    # Select top 5 documents with score >= 3 (on 5-point scale)
+                    selected_docs = [d for d in scored_docs if d.score >= 3][:5]
 
                     # Step 4: Create summarize_pdf steps for each selected document
                     # These are processed in parallel (same priority)
@@ -215,7 +238,7 @@ class ActionPlanner:
                 reasoning = (
                     f"HTML meeting with {len(discovered_documents)} documents. "
                     f"Flow: Process agenda/minutes PDFs → Generate initial overview → "
-                    f"Summarize {len(selected_docs) if other_docs else 0} selected docs → Integrate."
+                    f"Summarize {len(selected_docs)} selected docs → Integrate."
                 )
 
             # Add integration step
@@ -359,23 +382,86 @@ class ActionPlanner:
             "action_plan": action_plan,
         }
 
+    def _filter_documents_for_scoring(
+        self, documents: list
+    ) -> tuple[list, list]:
+        """
+        Filter documents into scorable and excluded lists.
+
+        Args:
+            documents: All discovered documents
+
+        Returns:
+            Tuple of (scorable_docs, excluded_docs) with exclusion reason
+        """
+        scorable = []
+        excluded = []
+
+        for doc in documents:
+            # Skip meeting-related docs (processed separately)
+            if doc.category in ["agenda", "minutes"]:
+                continue
+
+            # Check category exclusion
+            if doc.category not in self.SCORABLE_CATEGORIES:
+                excluded.append((doc, f"カテゴリ除外: {doc.category}"))
+                continue
+
+            # Check name pattern exclusion
+            excluded_by_pattern = False
+            for pattern in self.EXCLUDED_NAME_PATTERNS:
+                if pattern in doc.name:
+                    excluded.append((doc, f"パターン除外: {pattern}"))
+                    excluded_by_pattern = True
+                    break
+
+            if not excluded_by_pattern:
+                scorable.append(doc)
+
+        return scorable, excluded
+
     def _score_documents(
-        self, documents: list, main_content: str
+        self, documents: list, excluded_docs: list, main_content: str
     ) -> list[ScoredDocument]:
         """
         Score documents in Phase 1 using main content as context.
 
+        Uses 5-point scale:
+        - 5: 会議の主要議題に直接関連
+        - 4: 政策・方針に関する資料
+        - 3: データ・統計資料
+        - 2: 背景資料
+        - 1: 重要度低
+
         Args:
             documents: List of DiscoveredDocument to score
+            excluded_docs: List of (doc, reason) tuples for excluded documents
             main_content: Main content from HTML for context
 
         Returns:
             List of ScoredDocument sorted by score (descending)
         """
+        # Log all documents including excluded ones
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("📊 資料スコアリング結果")
+        logger.info("=" * 60)
+
+        # Log excluded documents first
+        if excluded_docs:
+            logger.info("")
+            logger.info("除外資料:")
+            for doc, reason in excluded_docs:
+                logger.info(f"  [除外] {doc.name} ({reason})")
+
         if not documents:
+            logger.info("")
+            logger.info("スコアリング対象資料: なし")
+            logger.info("=" * 60)
             return []
 
-        logger.info(f"Phase 1: スコアリング中 ({len(documents)}件の資料)")
+        logger.info("")
+        logger.info(f"スコアリング対象: {len(documents)}件")
 
         llm = self.model.llm()
 
@@ -389,15 +475,13 @@ class ActionPlanner:
 # 資料リスト
 {documents}
 
-# 判定基準
-以下の基準でスコア（0-100）を付けてください：
-- 会議の主要議題に関連する資料: 80-100
-- 政策・方針に関する資料: 70-90
-- データ・統計資料: 60-80
-- 参考資料・背景資料: 40-60
-- 委員個人提出資料: 30-50
-- 名簿・座席表等の形式資料: 0-20
-- パブリックコメント、意見募集資料: 20-40
+# 判定基準（5点満点）
+以下の基準でスコアを付けてください：
+- 5点: 会議の主要議題に直接関連する資料
+- 4点: 政策・方針に関する資料
+- 3点: データ・統計資料
+- 2点: 背景資料・補足資料
+- 1点: 重要度低
 
 # 出力形式
 JSON配列で出力してください：
@@ -408,7 +492,7 @@ JSON配列で出力してください：
 
 # 注意
 - 全ての資料にスコアを付けてください
-- スコアは整数で
+- スコアは1-5の整数で
 """,
         )
 
@@ -429,19 +513,23 @@ JSON配列で出力してください：
             )
 
             # Convert to ScoredDocument list
+            # Only accept results that match documents in the input list
             scored_documents = []
             for item in result:
-                # Find original document to get category
+                # Find original document by URL match
                 original_doc = next(
                     (d for d in documents if d.url == item.get("url")), None
                 )
-                category = original_doc.category if original_doc else "unknown"
+
+                # Skip if URL doesn't match any input document (LLM hallucination)
+                if original_doc is None:
+                    continue
 
                 scored_documents.append(
                     ScoredDocument(
-                        url=item.get("url", ""),
-                        name=item.get("name", ""),
-                        category=category,
+                        url=original_doc.url,
+                        name=original_doc.name,  # Use original name, not LLM's
+                        category=original_doc.category,
                         score=float(item.get("score", 0)),
                         reason=item.get("reason", ""),
                     )
@@ -450,9 +538,17 @@ JSON配列で出力してください：
             # Sort by score descending
             scored_documents.sort(key=lambda x: x.score, reverse=True)
 
-            logger.info(f"スコアリング完了: {len(scored_documents)}件")
-            for doc in scored_documents[:5]:
-                logger.info(f"  - {doc.score:.0f}点: {doc.name}")
+            # Log all scored documents
+            logger.info("")
+            logger.info("スコア結果:")
+            for doc in scored_documents:
+                selected_mark = "→選択" if doc.score >= 3 else ""
+                logger.info(f"  [{doc.score:.0f}点] {doc.name} {selected_mark}")
+
+            logger.info("")
+            selected_count = len([d for d in scored_documents if d.score >= 3])
+            logger.info(f"選択: {selected_count}件 (3点以上)")
+            logger.info("=" * 60)
 
             return scored_documents
 
