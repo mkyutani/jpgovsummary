@@ -196,7 +196,7 @@ class WordSummarizer:
 
         if extracted_toc and "目次なし" not in extracted_toc:
             logger.info("目次を抽出しました")
-            logger.info(f"目次内容:\n{extracted_toc[:500]}...")
+            logger.info(f"目次内容:\n{extracted_toc}...")
         else:
             logger.info("目次が見つかりませんでした")
 

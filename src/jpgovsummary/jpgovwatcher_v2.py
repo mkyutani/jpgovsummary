@@ -87,6 +87,7 @@ def run_jpgovwatcher_v2(
         "input_url": url,
         "input_type": input_type,
         "main_content": None,
+        "structured_overview": None,
         "discovered_documents": None,
         "action_plan": None,
         "batch": batch,
@@ -128,11 +129,11 @@ def run_jpgovwatcher_v2(
         "completed_actions": [],
         # Context from Phase 1
         "main_content": plan_state.get("main_content"),
-        "structured_summary": None,  # Generated in Phase 2
+        "structured_overview": plan_state.get("structured_overview"),  # Will be generated in Phase 2
         "has_meeting_info": False,  # Determined in Phase 2
         "input_url": url,
         # Results storage
-        "initial_overview": None,
+        "initial_summary": None,
         "document_summaries": [],
         "scored_documents": None,
         "final_summary": None,
@@ -165,7 +166,10 @@ def run_jpgovwatcher_v2(
     logger.info("PHASE 3: OUTPUT")
     logger.info("="*80 + "\n")
 
+    structured_overview = execution_state.get("structured_overview", "")
+    initial_summary = execution_state.get("initial_summary", "")
     final_summary = execution_state.get("final_review_summary") or execution_state.get("final_summary")
+    document_summaries = execution_state.get("document_summaries", [])
 
     if not final_summary:
         logger.error("No final summary generated")
@@ -175,13 +179,53 @@ def run_jpgovwatcher_v2(
             "errors": execution_state.get("errors", []),
         }
 
-    # Output in jpgovsummary 2-line format
-    print(final_summary)
-    print(url)
+    # Build complete output: title → structured_overview → initial_summary → final_summary → document_summaries
+    output_parts = []
+
+    # 0. Document title - extract from structured_overview if available
+    meeting_title = "会議サマリー"  # Default
+    if structured_overview:
+        import re
+        # Look for "- 会議名: ..." pattern in structured_overview
+        match = re.search(r'-\s*会議名[:：]\s*(.+?)(?:\n|$)', structured_overview)
+        if match:
+            meeting_title = match.group(1).strip()
+
+    output_parts.append(f"# {meeting_title}")
+
+    # 1. Structured overview (bullet point format from Phase 2)
+    if structured_overview:
+        output_parts.append("\n## 会議概要")
+        output_parts.append(structured_overview)
+
+    # 2. Initial summary (prose format from Phase 2)
+    if initial_summary:
+        output_parts.append("\n## 議事要約")
+        output_parts.append(initial_summary)
+
+    # 3. Final summary (integrated overview + URL)
+    output_parts.append("\n## 統合要約")
+    output_parts.append(final_summary)
+
+    # 4. Individual document summaries with URLs
+    if document_summaries:
+        output_parts.append("\n## 関連資料")
+        for doc_summary in document_summaries:
+            output_parts.append(f"\n### {doc_summary.name}")
+            output_parts.append(doc_summary.summary)
+            if doc_summary.url:
+                output_parts.append(f"\n{doc_summary.url}")
+
+    # Output complete summary
+    complete_output = "\n".join(output_parts)
+    print(complete_output)
 
     logger.info("\nWorkflow completed successfully")
-    logger.info(f"  Document summaries: {len(execution_state['document_summaries'])}")
-    logger.info(f"  Final summary: {len(final_summary)} characters")
+    logger.info(f"  Structured overview: {len(structured_overview) if structured_overview else 0} characters")
+    logger.info(f"  Initial summary: {len(initial_summary) if initial_summary else 0} characters")
+    logger.info(f"  Integrated summary: {len(final_summary)} characters")
+    logger.info(f"  Document summaries: {len(document_summaries)}")
+    logger.info(f"  Complete output: {len(complete_output)} characters")
     logger.info(f"  Errors: {len(execution_state['errors'])}")
 
     return {

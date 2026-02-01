@@ -23,7 +23,7 @@ class ActionStep(BaseModel):
         "summarize_pdf",
         "extract_html",
         "detect_document_type",
-        "generate_initial_overview",
+        "generate_initial_summary",
         "score_documents",
         "summarize_selected_documents",
         "integrate_summaries",
@@ -132,6 +132,7 @@ class PlanState(TypedDict):
 
     # Planning outputs (no LLM-generated content in Phase 1)
     main_content: str | None  # Extracted main content from HTML (raw)
+    structured_overview: str | None  # Structured meeting overview in markdown (boxed format)
     discovered_documents: list[DiscoveredDocument] | None  # Related documents found
     action_plan: ActionPlan | None  # Generated execution plan
 
@@ -168,12 +169,12 @@ class ExecutionState(TypedDict):
 
     # Context from Phase 1 (carried over from PlanState)
     main_content: str | None  # Main content extracted from HTML
-    structured_summary: str | None  # Structured meeting summary in markdown
+    structured_overview: str | None  # Structured meeting overview in markdown (boxed format)
     has_meeting_info: bool  # Flag if meaningful meeting info was found
     input_url: str  # Source URL
 
     # Results storage (lightweight - only final outputs)
-    initial_overview: str | None  # Overview generated in Phase 2 Step 1
+    initial_summary: str | None  # Summary generated in Phase 2 Step 1
     document_summaries: list[DocumentSummaryResult]  # Summaries from sub-agents
     scored_documents: list[ScoredDocument] | None  # Documents after scoring
     final_summary: str | None  # Integrated final summary
@@ -273,6 +274,8 @@ class HTMLProcessorState(TypedDict):
 
     # Output
     main_content: str | None  # Extracted main content (headers/footers removed)
+    structured_overview: str | None  # Structured meeting overview in markdown (boxed format)
+    has_meeting_info: bool  # Flag if meaningful meeting info was found
     discovered_documents: list[DiscoveredDocument] | None  # Discovered related documents
 
 

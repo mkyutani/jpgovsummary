@@ -51,7 +51,7 @@ class HTMLProcessor:
         """
         graph = StateGraph(HTMLProcessorState)
 
-        # Three-stage pipeline
+        # Three-stage pipeline (no meeting summary extraction in Phase 1)
         graph.add_node("load_html", self._load_html)
         graph.add_node("extract_main_content", self._extract_main_content)
         graph.add_node("discover_documents", self._discover_documents)
@@ -219,14 +219,14 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
             state: Current state with main_content
 
         Returns:
-            Updated state with structured_summary and has_meeting_info flag
+            Updated state with structured_overview and has_meeting_info flag
         """
         main_content = state.get("main_content")
 
         if not main_content:
             logger.info("メインコンテンツが空のため、会議概要抽出をスキップします")
             return {
-                "structured_summary": None,
+                "structured_overview": None,
                 "has_meeting_info": False,
             }
 
@@ -237,7 +237,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 {"main_content": main_content}
             )
 
-            structured_summary = extraction_result.get("structured_summary")
+            structured_overview = extraction_result.get("structured_overview")
             has_meeting_info = extraction_result.get("has_meeting_info", False)
 
             if has_meeting_info:
@@ -246,7 +246,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 logger.info("会議情報が見つかりませんでした")
 
             return {
-                "structured_summary": structured_summary,
+                "structured_overview": structured_overview,
                 "has_meeting_info": has_meeting_info,
             }
 
@@ -256,7 +256,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
             logger.error(traceback.format_exc())
             return {
-                "structured_summary": None,
+                "structured_overview": None,
                 "has_meeting_info": False,
             }
 
@@ -398,7 +398,7 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
     def invoke(self, input_data: dict) -> dict:
         """
-        Execute HTML processing.
+        Execute HTML processing (Phase 1 - no LLM summary generation).
 
         Args:
             input_data: Dict with keys:

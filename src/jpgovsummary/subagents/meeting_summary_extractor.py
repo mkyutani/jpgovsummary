@@ -22,7 +22,7 @@ class MeetingSummaryExtractorState(TypedDict):
     main_content: str
 
     # Output
-    structured_summary: str | None
+    structured_overview: str | None
     has_meeting_info: bool
 
 
@@ -79,7 +79,7 @@ class MeetingSummaryExtractor:
         if not main_content:
             logger.error("メインコンテンツが空のため、会議概要を抽出できません")
             return {
-                "structured_summary": None,
+                "structured_overview": None,
                 "has_meeting_info": False,
             }
 
@@ -160,22 +160,22 @@ HTMLメインコンテンツを分析し、以下の構造化されたMarkdown�
         try:
             result = chain.invoke({"main_content": main_content})
 
-            structured_summary = result.content.strip()
+            structured_overview = result.content.strip()
 
             # Check if meaningful meeting information was found
             has_meeting_info = (
-                "不明" not in structured_summary or
-                "記載なし" not in structured_summary or
-                len(structured_summary) > 200
+                "不明" not in structured_overview or
+                "記載なし" not in structured_overview or
+                len(structured_overview) > 200
             )
 
-            logger.info(f"✅ 構造化会議概要を抽出しました ({len(structured_summary)}文字)")
+            logger.info(f"✅ 構造化会議概要を抽出しました ({len(structured_overview)}文字)")
             logger.info("-" * 64)
-            logger.info(f"構造化会議概要:\n{structured_summary}")
+            logger.info(f"構造化会議概要:\n{structured_overview}")
             logger.info("-" * 64)
 
             return {
-                "structured_summary": structured_summary,
+                "structured_overview": structured_overview,
                 "has_meeting_info": has_meeting_info,
             }
 
@@ -185,7 +185,7 @@ HTMLメインコンテンツを分析し、以下の構造化されたMarkdown�
 
             logger.error(traceback.format_exc())
             return {
-                "structured_summary": None,
+                "structured_overview": None,
                 "has_meeting_info": False,
             }
 
@@ -199,7 +199,7 @@ HTMLメインコンテンツを分析し、以下の構造化されたMarkdown�
 
         Returns:
             Dict with keys:
-                - structured_summary: str | None - Structured meeting summary in markdown
+                - structured_overview: str | None - Structured meeting overview in markdown
                 - has_meeting_info: bool - Flag if meaningful meeting info was found
         """
         compiled = self.graph.compile()

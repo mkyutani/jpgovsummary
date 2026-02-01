@@ -404,8 +404,8 @@ class PowerPointSummarizer:
         all_selected_slides = sorted(all_selected_slides, key=lambda x: x.page)
 
         logger.info(
-            f"選択スライド: {', '.join([f'ページ{slide.page}' for slide in all_selected_slides])} "
-            f"(計{len(all_selected_slides)}枚, 総{total_pages}ページ中)"
+            f"Selected: {','.join([f'{slide.page}' for slide in all_selected_slides])} "
+            f"({len(all_selected_slides)}/{total_pages}枚)"
         )
 
         # Extract selected slide texts

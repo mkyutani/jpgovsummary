@@ -112,6 +112,7 @@ class ActionPlanner:
                 logger.warning("Failed to extract main content from HTML")
                 return {
                     "main_content": None,
+                    "structured_overview": None,
                     "discovered_documents": [],
                     "action_plan": ActionPlan(
                         steps=[],
@@ -127,7 +128,7 @@ class ActionPlanner:
                 # Overview only mode - just create initial overview, no PDF processing
                 steps.append(
                     ActionStep(
-                        action_type="generate_initial_overview",
+                        action_type="generate_initial_summary",
                         target=input_url,
                         params={
                             "main_content": main_content,
@@ -142,7 +143,7 @@ class ActionPlanner:
                 # No documents found - just generate overview
                 steps.append(
                     ActionStep(
-                        action_type="generate_initial_overview",
+                        action_type="generate_initial_summary",
                         target=input_url,
                         params={
                             "main_content": main_content,
@@ -179,7 +180,7 @@ class ActionPlanner:
                 # Step 2: Generate initial overview (after agenda/minutes are processed)
                 steps.append(
                     ActionStep(
-                        action_type="generate_initial_overview",
+                        action_type="generate_initial_summary",
                         target=input_url,
                         params={
                             "main_content": main_content,
@@ -276,6 +277,7 @@ class ActionPlanner:
 
             return {
                 "main_content": main_content,
+                "structured_overview": None,  # Generated in Phase 2, not Phase 1
                 "discovered_documents": discovered_documents,
                 "action_plan": action_plan,
             }
@@ -288,6 +290,7 @@ class ActionPlanner:
 
             return {
                 "main_content": None,
+                "structured_overview": None,
                 "discovered_documents": [],
                 "embedded_agenda": None,
                 "embedded_minutes": None,
@@ -362,6 +365,7 @@ class ActionPlanner:
 
         return {
             "main_content": None,  # No main content for single PDF
+            "structured_overview": None,  # No structured overview for PDF files
             "discovered_documents": [],
             "embedded_agenda": None,
             "embedded_minutes": None,
@@ -555,7 +559,7 @@ JSON配列で出力してください：
         # Action type to Japanese mapping
         action_type_ja = {
             "summarize_pdf": "PDF要約",
-            "generate_initial_overview": "概要生成",
+            "generate_initial_summary": "概要生成",
             "integrate_summaries": "要約統合",
             "finalize": "最終化",
             "post_to_bluesky": "Bluesky投稿",

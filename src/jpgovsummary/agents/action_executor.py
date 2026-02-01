@@ -52,7 +52,7 @@ class ActionExecutor:
         # Japanese descriptions for action types
         self._action_type_ja = {
             "summarize_pdf": "PDF要約",
-            "generate_initial_overview": "概要生成",
+            "generate_initial_summary": "概要生成",
             "integrate_summaries": "要約統合",
             "finalize": "最終化",
             "post_to_bluesky": "Bluesky投稿",
@@ -61,7 +61,7 @@ class ActionExecutor:
         # Emojis for action types
         self._action_emoji = {
             "summarize_pdf": "📄",
-            "generate_initial_overview": "📝",
+            "generate_initial_summary": "📝",
             "integrate_summaries": "🔗",
             "finalize": "✨",
             "post_to_bluesky": "🦋",
@@ -465,8 +465,8 @@ class ActionExecutor:
         """
         if step.action_type == "summarize_pdf":
             return self._execute_summarize_pdf(step, state)
-        elif step.action_type == "generate_initial_overview":
-            return self._execute_generate_initial_overview(step, state)
+        elif step.action_type == "generate_initial_summary":
+            return self._execute_generate_initial_summary(step, state)
         elif step.action_type == "integrate_summaries":
             return self._execute_integrate_summaries(step, state)
         elif step.action_type == "finalize":
@@ -584,13 +584,17 @@ class ActionExecutor:
             "category": category,
         }
 
-    def _execute_generate_initial_overview(self, step: ActionStep, state: ExecutionState) -> dict:
+    def _execute_generate_initial_summary(self, step: ActionStep, state: ExecutionState) -> dict:
         """
         Execute initial overview generation (Phase 2 Step 1).
 
-        Creates structured overview from:
-        1. Main content text (from HTML)
-        2. Already-processed agenda/minutes PDF summaries (using Phase 1 category classifications)
+        Generates BOTH:
+        1. structured_overview (箇条書き形式 - bullet point format)
+        2. initial_summary (文章形式 - prose format)
+
+        From:
+        - Main content text (from HTML)
+        - Already-processed agenda/minutes PDF summaries
 
         Args:
             step: ActionStep with params containing main_content
@@ -603,12 +607,10 @@ class ActionExecutor:
         input_url = step.target
 
         # Get agenda/minutes summaries from already-processed PDFs
-        # NOTE: Category filtering uses Phase 1 classifications (from HTMLProcessor's discovered_documents).
-        # The category is passed through ActionStep params and stored in DocumentSummaryResult.
         document_summaries = state.get("document_summaries", [])
         meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
 
-        logger.info("Generating structured overview:")
+        logger.info("Generating meeting overviews (Phase 2):")
         logger.info(f"  - Main content: {len(main_content)} chars")
         logger.info(f"  - Agenda/minutes PDFs: {len(meeting_docs)}")
 
@@ -628,18 +630,19 @@ class ActionExecutor:
 
         if not combined_context.strip():
             logger.warning("No content available for overview generation")
-            state["structured_summary"] = "## 会議概要\n\n（内容なし）"
+            state["structured_overview"] = ""
+            state["initial_summary"] = ""
             state["has_meeting_info"] = False
             return {"overview_length": 0}
 
-        # Generate structured overview using LLM
+        # Generate both structured_overview and initial_summary using LLM
         llm = self.model.llm()
 
         from langchain.prompts import PromptTemplate
 
         overview_prompt = PromptTemplate(
             input_variables=["content", "url"],
-            template="""あなたは会議情報から会議概要を作成する専門家です。
+            template="""あなたは会議情報から2種類の会議概要を作成する専門家です。
 
 # 会議ページURL
 {url}
@@ -647,35 +650,62 @@ class ActionExecutor:
 # 会議情報
 {content}
 
-# 出力形式
+# タスク
 
-会議の全体概要を500-1500文字程度の文章形式で出力してください。
+以下の2つの概要を生成してください：
+
+## 1. 構造化概要（箇条書き形式）
+
+会議の基本情報を箇条書きで簡潔にまとめてください。
+
+**出力形式例：**
+```
+- 会議名: [会議の正式名称と回数]
+- 開催日時: [日時]
+- 開催場所: [場所]
+- 議題: [主要な議題を簡潔に]
+- 決定事項: [重要な決定事項]
+```
+
+**重要な注意事項：**
+- 箇条書き形式（-記号使用）
+- 各項目は1-2行で簡潔に
+- **情報が見つからない項目は記載しない（省略する）**
+- 「不明」「記載なし」などの否定的な記述は不要
+
+## 2. 議事要約（文章形式）
+
+会議の内容を500-1500文字程度の文章形式で詳しく説明してください。
 
 **厳守事項：**
-- **箇条書きや項目列挙の厳格な禁止**：
-  - 箇条書き記号（・、-、*、+など）は絶対に使用しない
-  - 番号付きリスト（1.、2.、①、②など）は絶対に使用しない
-  - 改行による項目の列挙は行わない
-  - すべての内容は文章形式（段落形式）で記述する
-  - 複数の事項を述べる場合は「〜について、〜について、〜について」のように接続詞や句読点で自然に繋ぐ
+- **箇条書き厳格禁止**：箇条書き記号（・、-、*、+、番号など）は絶対に使用しない
+- すべて文章形式（段落形式）で記述
+- 複数の事項は接続詞や句読点で自然に繋ぐ
 
-# 含めるべき情報
+**含めるべき内容（ある場合のみ）：**
+1. 会議の目的と背景
+2. 主要な議論内容と論点
+3. 決定事項や合意内容
+4. 今後の予定や次回会議
+5. その他重要な情報
 
-提供された情報に基づいて、以下の要素を文章中に自然に織り込んでください：
+**重要な注意事項：**
+- 提供された情報のみ使用（推測・創作禁止）
+- **情報がない項目には一切言及しない**
+- 「不明」「記載なし」「確認が必要」などの否定的表現は使用しない
+- 書いてある内容だけを自然な文章で記述
+- 文章形式で自然に読める内容
+- 段落分けは適宜行ってよい
 
-1. **会議の基本情報**：会議名と回数、開催日時と場所（見つからない場合は省略または「不明」と記載）
-2. **会議の目的と議題**：会議の目的や主要議題（見つからない場合は「記載なし」と記載）
-3. **主要な議論内容**：主な議論や発言内容、論点（見つからない場合は「記載なし」と記載）
-4. **決定事項**：決定事項や合意内容、方針（見つからない場合は「記載なし」と記載）
-5. **その他の情報**：次回予定、出席者情報、配布資料など（あれば記載）
+# 出力形式
 
-# 重要な注意事項
-- 提供された情報に記載されている内容のみを使用（推測・創作はしない）
-- 情報が見つからない項目は自然に省略するか「不明」「記載なし」と明記
-- ファイルサイズ、ソフトウェア案内などの技術情報は除外
-- 文章形式で自然に読める概要を作成
-- 箇条書きではなく、接続詞で内容を繋げる
-- 段落分けは適宜行ってよいが、各段落内では箇条書きを使わない
+以下の形式で出力してください：
+
+---STRUCTURED_OVERVIEW---
+[構造化概要（箇条書き）をここに記述]
+---INITIAL_SUMMARY---
+[議事要約（文章形式）をここに記述]
+---END---
 """,
         )
 
@@ -683,37 +713,68 @@ class ActionExecutor:
 
         try:
             result = chain.invoke({"content": combined_context[:15000], "url": input_url})
-            structured_summary = result.content.strip()
+            full_output = result.content.strip()
 
-            logger.info(f"Generated structured overview: {len(structured_summary)} characters")
+            # Parse the two sections
+            import re
+            structured_match = re.search(
+                r'---STRUCTURED_OVERVIEW---\s*(.+?)\s*---INITIAL_SUMMARY---',
+                full_output,
+                re.DOTALL
+            )
+            summary_match = re.search(
+                r'---INITIAL_SUMMARY---\s*(.+?)\s*---END---',
+                full_output,
+                re.DOTALL
+            )
+
+            if structured_match and summary_match:
+                structured_overview = structured_match.group(1).strip()
+                initial_summary = summary_match.group(1).strip()
+            else:
+                logger.warning("Failed to parse structured output, using fallback")
+                structured_overview = ""
+                initial_summary = full_output
+
+            logger.info(f"Generated structured overview: {len(structured_overview)} characters")
+            logger.info(f"Generated initial summary: {len(initial_summary)} characters")
 
             # Check if meaningful meeting information was found
             has_meeting_info = (
-                "不明" not in structured_summary
-                or "記載なし" not in structured_summary
-                or len(structured_summary) > 200
+                len(structured_overview) > 50
+                or len(initial_summary) > 200
             )
 
             # Store in state
-            state["structured_summary"] = structured_summary
+            state["structured_overview"] = structured_overview
+            state["initial_summary"] = initial_summary
             state["has_meeting_info"] = has_meeting_info
 
-            # Output structured summary
+            # Output both overviews
             logger.info("")
-            logger.info("-" * 40)
-            logger.info("構造化会議概要:")
-            logger.info("-" * 40)
-            logger.info(structured_summary)
-            logger.info("-" * 40)
+            logger.info("=" * 60)
+            logger.info("構造化概要（箇条書き）:")
+            logger.info("=" * 60)
+            logger.info(structured_overview)
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("議事要約（文章形式）:")
+            logger.info("=" * 60)
+            logger.info(initial_summary)
+            logger.info("=" * 60)
 
-            return {"overview_length": len(structured_summary)}
+            return {
+                "structured_overview_length": len(structured_overview),
+                "initial_summary_length": len(initial_summary),
+            }
 
         except Exception as e:
-            logger.error(f"Error generating structured overview: {e}")
+            logger.error(f"Error generating overviews: {e}")
             import traceback
 
             traceback.print_exc()
-            state["structured_summary"] = "## 会議概要\n\n（生成エラー）"
+            state["structured_overview"] = "（生成エラー）"
+            state["initial_summary"] = "（生成エラー）"
             state["has_meeting_info"] = False
             return {"overview_length": 0, "error": str(e)}
 
@@ -722,13 +783,13 @@ class ActionExecutor:
         Execute meeting summary creation step.
 
         Combines:
-        1. Structured meeting summary (from HTML main content)
+        1. Structured meeting overview (from HTML main content)
         2. Agenda category document summaries
         3. Minutes category document summaries
 
         Into a consolidated meeting summary.
         """
-        structured_summary = step.params.get("structured_summary")
+        structured_overview = step.params.get("structured_overview")
         overview = step.params.get("overview")
 
         # Filter document summaries by category (agenda, minutes only)
@@ -736,7 +797,7 @@ class ActionExecutor:
         meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
 
         logger.info("Creating meeting summary:")
-        logger.info(f"  - Structured summary: {'Yes' if structured_summary else 'No'}")
+        logger.info(f"  - Structured overview: {'Yes' if structured_overview else 'No'}")
         logger.info(
             f"  - Agenda documents: {len([d for d in meeting_docs if d.category == 'agenda'])}"
         )
@@ -747,8 +808,8 @@ class ActionExecutor:
         # Build combined meeting content
         parts = []
 
-        if structured_summary:
-            parts.append(f"# 会議概要（HTMLより）\n\n{structured_summary}")
+        if structured_overview:
+            parts.append(f"# 会議概要（HTMLより）\n\n{structured_overview}")
 
         # Add agenda document summaries
         agenda_docs = [d for d in meeting_docs if d.category == "agenda"]
@@ -840,7 +901,7 @@ class ActionExecutor:
             # Store in state
             state["meeting_summary"] = meeting_summary
             state["meeting_summary_sources"] = {
-                "structured_summary": bool(structured_summary),
+                "structured_overview": bool(structured_overview),
                 "agenda_docs": len(agenda_docs),
                 "minutes_docs": len(minutes_docs),
             }
@@ -856,46 +917,114 @@ class ActionExecutor:
 
     def _execute_integrate_summaries(self, step: ActionStep, state: ExecutionState) -> dict:
         """
-        Execute summary integration step.
+        Execute summary integration step (Phase 3).
 
-        Combines initial_overview + document summaries into final summary.
+        Creates integrated summary:
+        - Integrated overview (LLM-generated from initial_summary + document summaries) + URL
+
+        The integrated overview combines:
+        - Phase 2 meeting overview (initial_summary)
+        - All document summaries (from Phase 2 document processing)
+        into a comprehensive meeting summary.
+
+        Note: Individual document summaries are NOT included in final_summary.
+        Only the integrated overview is stored in state["final_summary"].
         """
-        # Use initial_overview from state (generated in Phase 2 Step 1)
-        overview = state.get("initial_overview")
+        initial_summary = state.get("initial_summary", "")
         document_summaries = state.get("document_summaries", [])
+        input_url = state.get("input_url", "")
 
-        logger.info("Integrating summaries:")
-        logger.info(f"  - Initial overview: {'Yes' if overview else 'No'}")
+        logger.info("Integrating summaries (Phase 3 - Markdown output):")
+        logger.info(f"  - Initial overview: {'Yes' if initial_summary else 'No'}")
         logger.info(f"  - Document summaries: {len(document_summaries)}")
+        logger.info(f"  - Input URL: {input_url}")
 
-        # Build integrated summary
+        # Build integrated summary in markdown format
         parts = []
 
-        # 1. Overview (from Phase 2 Step 1)
-        if overview:
-            parts.append(overview)
+        # 1. Generate integrated overview from initial_summary + document summaries using LLM
+        logger.info("Generating integrated overview from meeting summary and document summaries...")
 
-        # 2. Document summaries (all processed documents)
+        # Build context from initial_summary and document summaries
+        context_parts = []
+
+        # Add initial_summary (meeting overview)
+        context_parts.append(f"# 会議概要\n\n{initial_summary}" if initial_summary else "")
+
+        # Add document summaries
+        context_parts.append("\n\n# 関連資料の要約")
         if document_summaries:
-            parts.append("\n\n---\n\n## 関連資料")
-            for doc_summary in document_summaries:
-                parts.append(f"\n\n### {doc_summary.name}")
-                if doc_summary.document_type:
-                    parts.append(f"\n（{doc_summary.document_type}）")
-                parts.append(f"\n\n{doc_summary.summary}")
+            for doc in document_summaries:
+                category_label = self._category_ja.get(doc.category, doc.category)
+                context_parts.append(
+                    f"\n\n### {doc.name} ({category_label})\n{doc.summary}"
+                )
 
+        combined_context = "\n".join(context_parts)
+
+        if combined_context.strip():
+            # Use LLM to generate integrated overview
+            llm = self.model.llm()
+            from langchain.prompts import PromptTemplate
+
+            integration_prompt = PromptTemplate(
+                input_variables=["content"],
+                template="""以下の会議概要と関連資料の要約から、この会議全体の統合要約を作成してください。
+
+# 入力内容
+{content}
+
+# 出力要件
+- 500-1000文字程度の文章形式で出力
+- 会議概要と関連資料の重要な内容を統合
+- 文章形式（箇条書き禁止）
+- 「だ・である調」で統一
+- 重複を避け、簡潔に
+- 会議全体の流れと重要なポイントを網羅
+""",
+            )
+
+            chain = integration_prompt | llm
+
+            try:
+                result = chain.invoke({"content": combined_context[:20000]})
+                integrated_overview = result.content.strip()
+
+                # Add URL on a new line (single newline between overview and URL)
+                if input_url and input_url not in integrated_overview:
+                    final_content = f"{integrated_overview}\n{input_url}"
+                else:
+                    final_content = integrated_overview
+
+                parts.append(final_content)
+
+                logger.info(f"Generated integrated overview: {len(integrated_overview)} characters")
+
+            except Exception as e:
+                logger.error(f"Error generating integrated overview: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fallback: use initial_summary if available
+                if initial_summary:
+                    if input_url:
+                        fallback_content = f"{initial_summary.strip()}\n{input_url}"
+                    else:
+                        fallback_content = initial_summary.strip()
+                    parts.append(fallback_content)
+
+        # final_summary contains only the integrated overview + URL
         if parts:
-            integrated_summary = "\n".join(parts)
+            final_summary = "\n".join(parts)
         else:
-            integrated_summary = "(要約なし)"
+            final_summary = ""
 
-        state["final_summary"] = integrated_summary
+        state["final_summary"] = final_summary
 
-        logger.info(f"Integrated summary: {len(integrated_summary)} characters")
-        logger.info(f"  - Documents included: {len(document_summaries)}")
+        logger.info(f"Final summary (integrated overview only): {len(final_summary)} characters")
+        logger.info(f"  - Source documents: {len(document_summaries)}")
 
         return {
-            "summary_length": len(integrated_summary),
+            "summary_length": len(final_summary),
             "document_count": len(document_summaries),
         }
 
@@ -911,19 +1040,6 @@ class ActionExecutor:
         logger.info("Finalizing summary:")
         logger.info(f"  - Batch mode: {batch}")
         logger.info(f"  - Summary length: {len(final_summary)} characters")
-
-        if not final_summary:
-            logger.warning("No final summary available for finalization")
-            # Use empty summary as fallback
-            final_summary = "(要約なし)"
-
-        # Character limit check
-        max_chars = 2000  # From bluesky_poster.py
-        if len(final_summary) > max_chars:
-            logger.warning(f"Summary exceeds {max_chars} characters, needs truncation")
-            # TODO: Implement smart truncation or re-summarization
-            # For now, just truncate
-            final_summary = final_summary[:max_chars] + "..."
 
         if batch:
             # Batch mode - skip human review
