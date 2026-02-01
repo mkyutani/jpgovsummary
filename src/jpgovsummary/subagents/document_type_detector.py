@@ -27,10 +27,6 @@ class DocumentTypeAnalysis(BaseModel):
 
     word: CategoryAnalysis = Field(description="Word文書の分析")
     powerpoint: CategoryAnalysis = Field(description="PowerPoint文書の分析")
-    agenda: CategoryAnalysis = Field(description="議事次第の分析")
-    participants: CategoryAnalysis = Field(description="参加者一覧の分析")
-    news: CategoryAnalysis = Field(description="ニュース・お知らせの分析")
-    survey: CategoryAnalysis = Field(description="調査・アンケートの分析")
     other: CategoryAnalysis = Field(description="その他の分析")
     conclusion: str = Field(description="最も可能性が高いと判断される形式")
 
@@ -48,13 +44,9 @@ class DocumentTypeDetector:
 
     # Category mapping
     CATEGORY_MAPPING = {
-        "word": "Word",
-        "powerpoint": "PowerPoint",
-        "agenda": "Agenda",
-        "participants": "Participants",
-        "news": "News",
-        "survey": "Survey",
-        "other": "Other",
+        "word": "word",
+        "powerpoint": "powerpoint",
+        "other": "other",
     }
 
     def __init__(self, model: Model | None = None):
@@ -123,14 +115,14 @@ class DocumentTypeDetector:
 # 役割
 政府のPDF文書を正確に分類する専門家として、文書の構造的・内容的特徴を分析し、最適なカテゴリーを判定してください。
 
-# 判定カテゴリー（7分類）
+# 判定カテゴリー（3分類）
 
 **1. Word文書 (word)**
 文章的特徴：
 - 完全な文章構造（主語・述語が明確）
 - 段落構成で論理的展開
 - 詳細な説明・背景・経緯を含む
-- 議事録、報告書、ガイドライン、仕様書
+- 議事録、報告書、ガイドライン、仕様書、とりまとめ、議事次第など
 
 **2. PowerPoint資料 (powerpoint)**
 構造的特徴：
@@ -140,27 +132,9 @@ class DocumentTypeDetector:
 - 1ページ完結型の構成
 - プレゼン資料、説明資料、概要資料
 
-**3. 議事次第 (agenda)**
-- 会議の議題リスト、開催日時・場所
-- 配付資料一覧、進行スケジュール
-- 「議事次第」「アジェンダ」のタイトル
-
-**4. 参加者一覧 (participants)**
-- 委員名簿、参加者リストが主要内容（50%以上）
-- 1ページ目が参加者一覧の場合のみ
-- 名前・所属・役職の一覧
-
-**5. ニュース・お知らせ (news)**
-- 報道発表、プレスリリース
-- 日付・部署名・問い合わせ先の構造
-
-**6. 調査・アンケート結果 (survey)**
-- 質問項目と回答データの対応関係
-- 表形式データが大部分（70%以上）
-- 集計値・割合・統計情報
-
-**7. その他 (other)**
-- 上記6分類に該当しない文書
+**3. その他 (other)**
+- 上記2分類に該当しない文書
+- 参加者一覧、ニュース・お知らせ、調査・アンケート結果など
 
 # 判定手順
 
@@ -170,7 +144,7 @@ class DocumentTypeDetector:
 - 表形式データの有無と割合
 
 ステップ2: 各カテゴリーの特徴を評価する
-以下の7カテゴリーについて、それぞれ1-5点でスコアリング：
+以下の3カテゴリーについて、それぞれ1-5点でスコアリング：
 - 5点: 該当カテゴリーの特徴が明確に多数確認できる
 - 4点: 該当カテゴリーの特徴がいくつか確認できる
 - 3点: 該当カテゴリーの特徴が部分的に見られる
@@ -203,10 +177,10 @@ PDFテキスト:
 {format_instructions}
 
 # 重要な制約
-- 必ず全7カテゴリーにスコア・理由・根拠を記載
+- 必ず全3カテゴリーにスコア・理由・根拠を記載
 - 複数カテゴリーが同じ高スコアにならないよう注意
 - 根拠テキスト例は文書から実際に引用
-- 結論（conclusion）で最も可能性が高いカテゴリー名を明記（word/powerpoint/agenda/participants/news/survey/other のいずれか）
+- 結論（conclusion）で最も可能性が高いカテゴリー名を明記（word/powerpoint/other のいずれか）
             """,
         )
 
@@ -223,33 +197,21 @@ PDFテキスト:
 
         # Extract scores and reasoning
         scores = {
-            "Word": result.word.score,
-            "PowerPoint": result.powerpoint.score,
-            "Agenda": result.agenda.score,
-            "Participants": result.participants.score,
-            "News": result.news.score,
-            "Survey": result.survey.score,
-            "Other": result.other.score,
+            "word": result.word.score,
+            "powerpoint": result.powerpoint.score,
+            "other": result.other.score,
         }
 
         reasoning = {
-            "Word": result.word.reason,
-            "PowerPoint": result.powerpoint.reason,
-            "Agenda": result.agenda.reason,
-            "Participants": result.participants.reason,
-            "News": result.news.reason,
-            "Survey": result.survey.reason,
-            "Other": result.other.reason,
+            "word": result.word.reason,
+            "powerpoint": result.powerpoint.reason,
+            "other": result.other.reason,
         }
 
         evidence = {
-            "Word": result.word.evidence,
-            "PowerPoint": result.powerpoint.evidence,
-            "Agenda": result.agenda.evidence,
-            "Participants": result.participants.evidence,
-            "News": result.news.evidence,
-            "Survey": result.survey.evidence,
-            "Other": result.other.evidence,
+            "word": result.word.evidence,
+            "powerpoint": result.powerpoint.evidence,
+            "other": result.other.evidence,
         }
 
         # Determine document type from scores

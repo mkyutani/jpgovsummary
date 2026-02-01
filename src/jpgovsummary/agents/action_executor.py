@@ -518,7 +518,7 @@ class ActionExecutor:
             logger.info(f"Confidence scores: {confidence_scores}")
 
             # Select appropriate summarizer
-            if document_type == "PowerPoint":
+            if document_type == "powerpoint":
                 logger.info("Using PowerPointSummarizer sub-agent")
                 summarizer_result = self.powerpoint_summarizer.invoke(
                     {
@@ -526,7 +526,7 @@ class ActionExecutor:
                         "url": url,
                     }
                 )
-            elif document_type == "Word":
+            elif document_type == "word":
                 logger.info("Using WordSummarizer sub-agent")
                 summarizer_result = self.word_summarizer.invoke(
                     {
@@ -536,8 +536,8 @@ class ActionExecutor:
                 )
             else:
                 # Fallback: Try Word summarizer for other types
-                logger.warning(
-                    f"Unsupported type '{document_type}', falling back to WordSummarizer"
+                logger.info(
+                    f"Type '{document_type}' detected, using WordSummarizer"
                 )
                 summarizer_result = self.word_summarizer.invoke(
                     {
