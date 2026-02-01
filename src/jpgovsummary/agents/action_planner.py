@@ -93,10 +93,6 @@ class ActionPlanner:
             main_content = html_result.get("main_content")
             discovered_documents = html_result.get("discovered_documents", [])
 
-            # Extract embedded meeting content
-            embedded_agenda = html_result.get("agenda_content")
-            embedded_minutes = html_result.get("minutes_content")
-
             # Filter documents by category
             meeting_related_docs = [
                 doc for doc in discovered_documents if doc.category in ["agenda", "minutes"]
@@ -117,8 +113,6 @@ class ActionPlanner:
                 return {
                     "main_content": None,
                     "discovered_documents": [],
-                    "embedded_agenda": None,
-                    "embedded_minutes": None,
                     "action_plan": ActionPlan(
                         steps=[],
                         reasoning="Failed to extract main content from HTML meeting page",
@@ -137,8 +131,6 @@ class ActionPlanner:
                         target=input_url,
                         params={
                             "main_content": main_content,
-                            "embedded_agenda": embedded_agenda,
-                            "embedded_minutes": embedded_minutes,
                         },
                         priority=priority,
                         estimated_tokens=2000,
@@ -154,8 +146,6 @@ class ActionPlanner:
                         target=input_url,
                         params={
                             "main_content": main_content,
-                            "embedded_agenda": embedded_agenda,
-                            "embedded_minutes": embedded_minutes,
                         },
                         priority=priority,
                         estimated_tokens=2000,
@@ -193,8 +183,6 @@ class ActionPlanner:
                         target=input_url,
                         params={
                             "main_content": main_content,
-                            "embedded_agenda": embedded_agenda,
-                            "embedded_minutes": embedded_minutes,
                         },
                         priority=priority,
                         estimated_tokens=2000,
@@ -289,8 +277,6 @@ class ActionPlanner:
             return {
                 "main_content": main_content,
                 "discovered_documents": discovered_documents,
-                "embedded_agenda": embedded_agenda,
-                "embedded_minutes": embedded_minutes,
                 "action_plan": action_plan,
             }
 

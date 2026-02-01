@@ -51,17 +51,15 @@ class HTMLProcessor:
         """
         graph = StateGraph(HTMLProcessorState)
 
-        # Four-stage pipeline
+        # Three-stage pipeline
         graph.add_node("load_html", self._load_html)
         graph.add_node("extract_main_content", self._extract_main_content)
-        graph.add_node("extract_meeting_summary", self._extract_meeting_summary)
         graph.add_node("discover_documents", self._discover_documents)
 
         # Linear flow
         graph.set_entry_point("load_html")
         graph.add_edge("load_html", "extract_main_content")
-        graph.add_edge("extract_main_content", "extract_meeting_summary")
-        graph.add_edge("extract_meeting_summary", "discover_documents")
+        graph.add_edge("extract_main_content", "discover_documents")
         graph.add_edge("discover_documents", END)
 
         return graph
@@ -208,66 +206,58 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
         main_content = result.content.strip()
         logger.info(f"メインコンテンツ抽出完了 ({len(main_content)}文字)")
         logger.info("-" * 64)
-        logger.info(f"メインコンテンツ： {main_content}")
+        logger.info(f"メインコンテンツ： {main_content.replace(chr(10), '\\n')}")
         logger.info("-" * 64)
 
         return {"main_content": main_content}
 
     def _extract_meeting_summary(self, state: HTMLProcessorState) -> HTMLProcessorState:
         """
-        Extract agenda and minutes content from main content.
+        Extract structured meeting summary from main content.
 
         Args:
             state: Current state with main_content
 
         Returns:
-            Updated state with agenda_content, minutes_content, and flags
+            Updated state with structured_summary and has_meeting_info flag
         """
         main_content = state.get("main_content")
 
         if not main_content:
-            logger.info("メインコンテンツが空のため、議事要約抽出をスキップします")
+            logger.info("メインコンテンツが空のため、会議概要抽出をスキップします")
             return {
-                "agenda_content": None,
-                "minutes_content": None,
-                "has_embedded_agenda": False,
-                "has_embedded_minutes": False,
+                "structured_summary": None,
+                "has_meeting_info": False,
             }
 
-        logger.info("議事次第・議事録の抽出を開始...")
+        logger.info("構造化会議概要の抽出を開始...")
 
         try:
             extraction_result = self.meeting_summary_extractor.invoke(
                 {"main_content": main_content}
             )
 
-            agenda_content = extraction_result.get("agenda_content")
-            minutes_content = extraction_result.get("minutes_content")
-            has_embedded_agenda = extraction_result.get("has_embedded_agenda", False)
-            has_embedded_minutes = extraction_result.get("has_embedded_minutes", False)
+            structured_summary = extraction_result.get("structured_summary")
+            has_meeting_info = extraction_result.get("has_meeting_info", False)
 
-            if has_embedded_agenda or has_embedded_minutes:
-                logger.info("✅ 議事要約の抽出が完了しました")
+            if has_meeting_info:
+                logger.info("✅ 構造化会議概要の抽出が完了しました")
             else:
-                logger.info("議事次第・議事録セクションは見つかりませんでした")
+                logger.info("会議情報が見つかりませんでした")
 
             return {
-                "agenda_content": agenda_content,
-                "minutes_content": minutes_content,
-                "has_embedded_agenda": has_embedded_agenda,
-                "has_embedded_minutes": has_embedded_minutes,
+                "structured_summary": structured_summary,
+                "has_meeting_info": has_meeting_info,
             }
 
         except Exception as e:
-            logger.error(f"議事要約抽出中にエラー: {e}")
+            logger.error(f"会議概要抽出中にエラー: {e}")
             import traceback
 
             logger.error(traceback.format_exc())
             return {
-                "agenda_content": None,
-                "minutes_content": None,
-                "has_embedded_agenda": False,
-                "has_embedded_minutes": False,
+                "structured_summary": None,
+                "has_meeting_info": False,
             }
 
     def _discover_documents(self, state: HTMLProcessorState) -> HTMLProcessorState:
@@ -304,7 +294,16 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 - マークダウン内のすべてのリンクを漏れなく抽出
 - リンク先URLとリンクテキストを取得
 
-ステップ2: 各リンクのカテゴリを判定する
+ステップ2: リンクテキストのクリーニング
+- リンクテキストから以下を除去して、クリーンな文書名のみを抽出：
+  - ファイル形式表記（【PDF形式】、【Excel形式】、【Word形式】など）
+  - ファイルサイズ表記（［56KB］、［1.2MB］、［200KB］など）
+  - その他の装飾記号や括弧内の形式情報
+- 例：「【PDF形式】［56KB］ (議事次第)」→「議事次第」
+- 例：「資料1【PDF形式】」→「資料1」
+- 例：「【PDF形式】［1.2MB］ 委員名簿」→「委員名簿」
+
+ステップ3: 各リンクのカテゴリを判定する
 
 - 以下のいずれかに分類する
     - `agenda`: 議事次第
@@ -318,19 +317,20 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
     - `announcement`: プレスリリース、ニュース、報道発表
     - `other`: その他
 
-ステップ3: 相対パスを絶対パスに変換
+ステップ4: 相対パスを絶対パスに変換
 - 相対パスは絶対URLに変換
 - ベースURL: {url}
 
-ステップ4: 出力
+ステップ5: 出力
 すべてのリンクについて以下を記述：
 - URL（絶対パス）
-- リンクテキスト
-- 判定結果（true/false）
+- クリーンな文書名（形式情報を除去したもの）
+- カテゴリ
 - 判断理由（具体的に）
 
 # 制約事項
 - すべてのリンクを漏れなく出力
+- 文書名は必ずクリーニングすること（形式情報を含めない）
 - 判定理由は具体的に記述
 - 不確かな場合は厳密に判断
             """
@@ -344,9 +344,14 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
 
 # 処理手順
 1. すべてのリンクを抽出
-2. 各リンクが関連資料か判定し、カテゴリを決定
-3. 相対パスを絶対パスに変換
-4. 全リンクについて、URL、名前、カテゴリを出力
+2. リンクテキストをクリーニング（ファイル形式・サイズ表記を除去）
+3. 各リンクが関連資料か判定し、カテゴリを決定
+4. 相対パスを絶対パスに変換
+5. 全リンクについて、URL、クリーンな文書名、カテゴリを出力
+
+# 重要な注意事項
+- 文書名には「【PDF形式】」「［56KB］」などの形式情報を含めないこと
+- 括弧内の実際の文書名のみを抽出すること
 
 # 出力フォーマット
 {format_instructions}
@@ -404,10 +409,6 @@ Webページのマークダウンを分析し、ヘッダー・フッター・�
                 - markdown: str | None - Converted markdown
                 - main_content: str | None - Extracted main content
                 - discovered_documents: list[DiscoveredDocument] - Discovered related documents
-                - agenda_content: str | None - Extracted agenda section
-                - minutes_content: str | None - Extracted minutes section
-                - has_embedded_agenda: bool - Flag if agenda found
-                - has_embedded_minutes: bool - Flag if minutes found
         """
         compiled = self.graph.compile()
         result = compiled.invoke(input_data)

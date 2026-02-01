@@ -442,10 +442,7 @@ class ActionExecutor:
         logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
         # Output generated summary
-        logger.info(f"  [{log_prefix}] --- 要約内容 ---")
-        for line in summary.split("\n"):
-            logger.info(f"  [{log_prefix}]   {line}")
-        logger.info(f"  [{log_prefix}] ----------------")
+        logger.info(f"  [{log_prefix}] 要約：{summary.replace(chr(10), '\\n')}")
 
         return {
             "document_type": document_type,
@@ -578,10 +575,7 @@ class ActionExecutor:
         logger.info(f"  [{log_prefix}] Generated summary: {len(summary)} characters")
 
         # Output generated summary
-        logger.info(f"  [{log_prefix}] --- 要約内容 ---")
-        for line in summary.split("\n"):
-            logger.info(f"  [{log_prefix}]   {line}")
-        logger.info(f"  [{log_prefix}] ----------------")
+        logger.info(f"  [{log_prefix}] 要約：{summary.replace(chr(10), '\\n')}")
 
         return {
             "document_type": document_type,
@@ -594,21 +588,18 @@ class ActionExecutor:
         """
         Execute initial overview generation (Phase 2 Step 1).
 
-        Creates overview from:
+        Creates structured overview from:
         1. Main content text (from HTML)
-        2. Embedded agenda/minutes content (from HTML)
-        3. Embedded minutes content (from HTML)
-        4. Already-processed agenda/minutes PDF summaries (using Phase 1 category classifications)
+        2. Already-processed agenda/minutes PDF summaries (using Phase 1 category classifications)
 
         Args:
-            step: ActionStep with params containing main_content, structured_summary
+            step: ActionStep with params containing main_content
             state: ExecutionState with document_summaries from agenda/minutes PDFs
 
         Returns:
             Result dict with overview_length
         """
         main_content = step.params.get("main_content") or state.get("main_content", "")
-        structured_summary = step.params.get("structured_summary") or state.get("structured_summary")
         input_url = step.target
 
         # Get agenda/minutes summaries from already-processed PDFs
@@ -617,9 +608,8 @@ class ActionExecutor:
         document_summaries = state.get("document_summaries", [])
         meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
 
-        logger.info("Generating initial overview:")
+        logger.info("Generating structured overview:")
         logger.info(f"  - Main content: {len(main_content)} chars")
-        logger.info(f"  - Structured summary: {'Yes' if structured_summary else 'No'}")
         logger.info(f"  - Agenda/minutes PDFs: {len(meeting_docs)}")
 
         # Build context for overview generation
@@ -629,11 +619,7 @@ class ActionExecutor:
         if main_content:
             context_parts.append(f"# 会議ページ本文\n\n{main_content[:8000]}")
 
-        # 2. Structured meeting summary from HTML
-        if structured_summary:
-            context_parts.append(f"\n\n# 会議概要（HTML内）\n\n{structured_summary}")
-
-        # 4. Agenda/minutes PDF summaries
+        # 2. Agenda/minutes PDF summaries
         for doc in meeting_docs:
             label = "議事次第" if doc.category == "agenda" else "議事録"
             context_parts.append(f"\n\n# {label}（PDF: {doc.name}）\n\n{doc.summary}")
@@ -642,17 +628,18 @@ class ActionExecutor:
 
         if not combined_context.strip():
             logger.warning("No content available for overview generation")
-            state["initial_overview"] = "(内容なし)"
+            state["structured_summary"] = "## 会議概要\n\n（内容なし）"
+            state["has_meeting_info"] = False
             return {"overview_length": 0}
 
-        # Generate overview using LLM
+        # Generate structured overview using LLM
         llm = self.model.llm()
 
         from langchain.prompts import PromptTemplate
 
         overview_prompt = PromptTemplate(
             input_variables=["content", "url"],
-            template="""あなたは会議情報を要約する専門家です。以下の会議情報から概要を作成してください。
+            template="""あなたは会議情報から構造化された会議概要を作成する専門家です。
 
 # 会議ページURL
 {url}
@@ -660,33 +647,42 @@ class ActionExecutor:
 # 会議情報
 {content}
 
-# 要約作成手順
+# 出力形式
 
-ステップ1: 会議の基本情報を特定する
-- 会議名・委員会名
-- 開催日時・場所
-- 議題・テーマ
+以下のMarkdown構造で出力してください：
 
-ステップ2: 主要な内容を抽出する
-- 議論された主要論点
-- 決定事項・合意事項
-- 今後の予定・方針
+```markdown
+## 会議概要
 
-ステップ3: 概要を作成する
+### プロフィール
+- 会議名、回数: [会議名と第X回を記載。見つからない場合は「不明」]
+- 日時、場所: [開催日時と場所を記載。見つからない場合は「不明」]
+- 議題一覧: [議題を箇条書きで記載。見つからない場合は「記載なし」]
+- 配布資料一覧: [配布資料名を箇条書きで記載。見つからない場合は「記載なし」]
+- 出席者一覧: [出席者名を箇条書きまたは人数のみで記載。見つからない場合は「記載なし」]
+
+### 議事
+- 会議の目的、議題: [会議の目的や主要議題を記載。見つからない場合は「記載なし」]
+- 主要な議論内容: [主な議論や発言内容を記載。見つからない場合は「記載なし」]
+- 決定事項の要約: [決定事項や合意内容を記載。見つからない場合は「記載なし」]
+- 次回予定: [次回開催予定を記載。見つからない場合は「記載なし」]
+
+### 生成された概要
+
+```
+[500-1500文字程度の会議全体の概要を記載]
 - 会議の目的と位置づけ
 - 主要な議論内容
 - 重要な決定や方針
+```
+```
 
-# 出力形式
-概要文のみを出力してください（Markdown見出し不要、改行は適宜使用）
-
-# 文量
-500-1500文字程度
-
-# 制約
-- 推測や補完は行わない
-- 提供された情報に記載されている内容のみを使用
-- 会議の性格（定例会議、臨時会議、審議会等）を明記
+# 重要な注意事項
+- 提供された情報に記載されている内容のみを使用（推測・創作はしない）
+- 情報が見つからない項目は「不明」または「記載なし」と明記
+- ファイルサイズ、ソフトウェア案内などの技術情報は除外
+- 見出し構造（##、###）を必ず守る
+- 生成された概要はコードフェンス内に記載
 """,
         )
 
@@ -694,40 +690,38 @@ class ActionExecutor:
 
         try:
             result = chain.invoke({"content": combined_context[:15000], "url": input_url})
-            overview = result.content.strip()
+            structured_summary = result.content.strip()
 
-            logger.info(f"Generated initial overview: {len(overview)} characters")
+            logger.info(f"Generated structured overview: {len(structured_summary)} characters")
 
-            # Get structured_summary from state and append initial_overview
-            structured_summary = state.get("structured_summary", "")
+            # Check if meaningful meeting information was found
+            has_meeting_info = (
+                "不明" not in structured_summary
+                or "記載なし" not in structured_summary
+                or len(structured_summary) > 200
+            )
 
-            # Append initial_overview as a new section in markdown
-            if structured_summary:
-                enhanced_summary = f"{structured_summary}\n\n### 生成された概要\n\n```\n{overview}\n```"
-            else:
-                # If no structured_summary exists, create a basic structure
-                enhanced_summary = f"## 会議概要\n\n### 生成された概要\n\n```\n{overview}\n```"
+            # Store in state
+            state["structured_summary"] = structured_summary
+            state["has_meeting_info"] = has_meeting_info
 
-            # Store both in state
-            state["initial_overview"] = overview
-            state["structured_summary"] = enhanced_summary
-
-            # Output enhanced structured summary
+            # Output structured summary
             logger.info("")
             logger.info("-" * 40)
-            logger.info("構造化会議概要（initial_overview追加後）:")
+            logger.info("構造化会議概要:")
             logger.info("-" * 40)
-            logger.info(enhanced_summary)
+            logger.info(structured_summary)
             logger.info("-" * 40)
 
-            return {"overview_length": len(overview)}
+            return {"overview_length": len(structured_summary)}
 
         except Exception as e:
-            logger.error(f"Error generating overview: {e}")
+            logger.error(f"Error generating structured overview: {e}")
             import traceback
 
             traceback.print_exc()
-            state["initial_overview"] = "(概要生成エラー)"
+            state["structured_summary"] = "## 会議概要\n\n（生成エラー）"
+            state["has_meeting_info"] = False
             return {"overview_length": 0, "error": str(e)}
 
     def _execute_create_meeting_summary(self, step: ActionStep, state: ExecutionState) -> dict:

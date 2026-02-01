@@ -135,10 +135,6 @@ class PlanState(TypedDict):
     discovered_documents: list[DiscoveredDocument] | None  # Related documents found
     action_plan: ActionPlan | None  # Generated execution plan
 
-    # Meeting summary components (extracted from HTML)
-    embedded_agenda: str | None  # Agenda content from HTML main content
-    embedded_minutes: str | None  # Minutes content from HTML main content
-
     # Control flags (inherited from CLI)
     batch: bool  # Run without human interaction
     skip_bluesky_posting: bool  # Skip Bluesky posting
@@ -172,8 +168,8 @@ class ExecutionState(TypedDict):
 
     # Context from Phase 1 (carried over from PlanState)
     main_content: str | None  # Main content extracted from HTML
-    embedded_agenda: str | None  # Agenda content from HTML
-    embedded_minutes: str | None  # Minutes content from HTML
+    structured_summary: str | None  # Structured meeting summary in markdown
+    has_meeting_info: bool  # Flag if meaningful meeting info was found
     input_url: str  # Source URL
 
     # Results storage (lightweight - only final outputs)
@@ -278,12 +274,6 @@ class HTMLProcessorState(TypedDict):
     # Output
     main_content: str | None  # Extracted main content (headers/footers removed)
     discovered_documents: list[DiscoveredDocument] | None  # Discovered related documents
-
-    # Meeting summary extraction (from main content)
-    agenda_content: str | None  # Extracted agenda section
-    minutes_content: str | None  # Extracted minutes section
-    has_embedded_agenda: bool  # Flag if agenda found in main content
-    has_embedded_minutes: bool  # Flag if minutes found in main content
 
 
 # ============================================================================

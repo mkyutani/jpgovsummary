@@ -86,12 +86,9 @@ def run_jpgovwatcher_v2(
     plan_state: PlanState = {
         "input_url": url,
         "input_type": input_type,
-        "overview": None,
+        "main_content": None,
         "discovered_documents": None,
         "action_plan": None,
-        "embedded_agenda": None,
-        "embedded_minutes": None,
-        "meeting_summary": None,
         "batch": batch,
         "skip_bluesky_posting": skip_bluesky_posting,
         "overview_only": overview_only,
@@ -131,8 +128,8 @@ def run_jpgovwatcher_v2(
         "completed_actions": [],
         # Context from Phase 1
         "main_content": plan_state.get("main_content"),
-        "embedded_agenda": plan_state.get("embedded_agenda"),
-        "embedded_minutes": plan_state.get("embedded_minutes"),
+        "structured_summary": None,  # Generated in Phase 2
+        "has_meeting_info": False,  # Determined in Phase 2
         "input_url": url,
         # Results storage
         "initial_overview": None,
