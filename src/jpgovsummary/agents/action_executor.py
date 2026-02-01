@@ -395,19 +395,14 @@ class ActionExecutor:
         """
         url = step.target
         category = step.params.get("category")
-        doc_name = step.params.get("doc_name", url.split("/")[-1])
-        # Truncate long names for log prefix
-        log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
 
         # For agenda documents, skip LLM and use raw PDF text
         if category == "agenda":
-            logger.info(f"  {log_prefix}：目次のみから要約を作成します")
             pdf_pages = load_pdf_as_text(url)
             summary = "\n\n".join(pdf_pages)
             title = url.split("/")[-1].replace(".pdf", "")
             document_type = "Agenda"
         else:
-            logger.info(f"  {log_prefix}の要約を作成中...")
             pdf_pages = load_pdf_as_text(url)
             # Detect document type
             detection_result = self.document_type_detector.invoke(
@@ -437,7 +432,14 @@ class ActionExecutor:
             category=category,
         )
 
-        logger.info(f"  {log_prefix}：要約完了 ({len(summary)}文字)")
+        # Determine log prefix: prefer category_ja, fallback to title
+        category_ja = self._category_ja.get(category, "")
+        if category_ja:
+            log_prefix = category_ja
+        else:
+            log_prefix = title[:25] + "..." if len(title) > 25 else title
+
+        logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
         # Output generated summary
         logger.info(f"  [{log_prefix}] --- 要約内容 ---")
@@ -551,8 +553,6 @@ class ActionExecutor:
             summary = summarizer_result.get("summary", "")
             title = summarizer_result.get("title", url.split("/")[-1])
 
-        logger.info(f"Generated summary: {len(summary)} characters")
-
         # Use category from Phase 1's discovered_documents (passed via ActionStep params)
         category = step.params.get("category")
 
@@ -568,9 +568,16 @@ class ActionExecutor:
         # Store in state
         state["document_summaries"].append(doc_summary)
 
+        # Determine log prefix: prefer category_ja, fallback to title
+        category_ja = self._category_ja.get(category, "")
+        if category_ja:
+            log_prefix = category_ja
+        else:
+            log_prefix = title[:25] + "..." if len(title) > 25 else title
+
+        logger.info(f"  [{log_prefix}] Generated summary: {len(summary)} characters")
+
         # Output generated summary
-        doc_name = step.params.get("doc_name", url.split("/")[-1])
-        log_prefix = doc_name[:25] + "..." if len(doc_name) > 25 else doc_name
         logger.info(f"  [{log_prefix}] --- 要約内容 ---")
         for line in summary.split("\n"):
             logger.info(f"  [{log_prefix}]   {line}")
@@ -594,15 +601,14 @@ class ActionExecutor:
         4. Already-processed agenda/minutes PDF summaries (using Phase 1 category classifications)
 
         Args:
-            step: ActionStep with params containing main_content, embedded_agenda, embedded_minutes
+            step: ActionStep with params containing main_content, structured_summary
             state: ExecutionState with document_summaries from agenda/minutes PDFs
 
         Returns:
             Result dict with overview_length
         """
         main_content = step.params.get("main_content") or state.get("main_content", "")
-        embedded_agenda = step.params.get("embedded_agenda") or state.get("embedded_agenda")
-        embedded_minutes = step.params.get("embedded_minutes") or state.get("embedded_minutes")
+        structured_summary = step.params.get("structured_summary") or state.get("structured_summary")
         input_url = step.target
 
         # Get agenda/minutes summaries from already-processed PDFs
@@ -613,8 +619,7 @@ class ActionExecutor:
 
         logger.info("Generating initial overview:")
         logger.info(f"  - Main content: {len(main_content)} chars")
-        logger.info(f"  - Embedded agenda: {'Yes' if embedded_agenda else 'No'}")
-        logger.info(f"  - Embedded minutes: {'Yes' if embedded_minutes else 'No'}")
+        logger.info(f"  - Structured summary: {'Yes' if structured_summary else 'No'}")
         logger.info(f"  - Agenda/minutes PDFs: {len(meeting_docs)}")
 
         # Build context for overview generation
@@ -624,13 +629,9 @@ class ActionExecutor:
         if main_content:
             context_parts.append(f"# 会議ページ本文\n\n{main_content[:8000]}")
 
-        # 2. Embedded agenda from HTML
-        if embedded_agenda:
-            context_parts.append(f"\n\n# 議事次第（HTML内）\n\n{embedded_agenda}")
-
-        # 3. Embedded minutes from HTML
-        if embedded_minutes:
-            context_parts.append(f"\n\n# 議事録（HTML内）\n\n{embedded_minutes}")
+        # 2. Structured meeting summary from HTML
+        if structured_summary:
+            context_parts.append(f"\n\n# 会議概要（HTML内）\n\n{structured_summary}")
 
         # 4. Agenda/minutes PDF summaries
         for doc in meeting_docs:
@@ -697,15 +698,26 @@ class ActionExecutor:
 
             logger.info(f"Generated initial overview: {len(overview)} characters")
 
-            # Store in state
-            state["initial_overview"] = overview
+            # Get structured_summary from state and append initial_overview
+            structured_summary = state.get("structured_summary", "")
 
-            # Output generated overview
+            # Append initial_overview as a new section in markdown
+            if structured_summary:
+                enhanced_summary = f"{structured_summary}\n\n### 生成された概要\n\n```\n{overview}\n```"
+            else:
+                # If no structured_summary exists, create a basic structure
+                enhanced_summary = f"## 会議概要\n\n### 生成された概要\n\n```\n{overview}\n```"
+
+            # Store both in state
+            state["initial_overview"] = overview
+            state["structured_summary"] = enhanced_summary
+
+            # Output enhanced structured summary
             logger.info("")
             logger.info("-" * 40)
-            logger.info("生成された概要:")
+            logger.info("構造化会議概要（initial_overview追加後）:")
             logger.info("-" * 40)
-            logger.info(overview)
+            logger.info(enhanced_summary)
             logger.info("-" * 40)
 
             return {"overview_length": len(overview)}
@@ -723,15 +735,13 @@ class ActionExecutor:
         Execute meeting summary creation step.
 
         Combines:
-        1. Embedded agenda content (from HTML main content)
-        2. Embedded minutes content (from HTML main content)
-        3. Agenda category document summaries
-        4. Minutes category document summaries
+        1. Structured meeting summary (from HTML main content)
+        2. Agenda category document summaries
+        3. Minutes category document summaries
 
         Into a consolidated meeting summary.
         """
-        embedded_agenda = step.params.get("embedded_agenda")
-        embedded_minutes = step.params.get("embedded_minutes")
+        structured_summary = step.params.get("structured_summary")
         overview = step.params.get("overview")
 
         # Filter document summaries by category (agenda, minutes only)
@@ -739,8 +749,7 @@ class ActionExecutor:
         meeting_docs = [doc for doc in document_summaries if doc.category in ["agenda", "minutes"]]
 
         logger.info("Creating meeting summary:")
-        logger.info(f"  - Embedded agenda: {'Yes' if embedded_agenda else 'No'}")
-        logger.info(f"  - Embedded minutes: {'Yes' if embedded_minutes else 'No'}")
+        logger.info(f"  - Structured summary: {'Yes' if structured_summary else 'No'}")
         logger.info(
             f"  - Agenda documents: {len([d for d in meeting_docs if d.category == 'agenda'])}"
         )
@@ -751,11 +760,8 @@ class ActionExecutor:
         # Build combined meeting content
         parts = []
 
-        if embedded_agenda:
-            parts.append(f"# 議事次第（HTMLより）\n\n{embedded_agenda}")
-
-        if embedded_minutes:
-            parts.append(f"\n\n# 議事録（HTMLより）\n\n{embedded_minutes}")
+        if structured_summary:
+            parts.append(f"# 会議概要（HTMLより）\n\n{structured_summary}")
 
         # Add agenda document summaries
         agenda_docs = [d for d in meeting_docs if d.category == "agenda"]
@@ -846,8 +852,7 @@ class ActionExecutor:
             # Store in state
             state["meeting_summary"] = meeting_summary
             state["meeting_summary_sources"] = {
-                "embedded_agenda": bool(embedded_agenda),
-                "embedded_minutes": bool(embedded_minutes),
+                "structured_summary": bool(structured_summary),
                 "agenda_docs": len(agenda_docs),
                 "minutes_docs": len(minutes_docs),
             }
