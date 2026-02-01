@@ -137,7 +137,6 @@ def run_jpgovwatcher_v2(
         "document_summaries": [],
         "scored_documents": None,
         "final_summary": None,
-        "final_review_summary": None,
         # Meeting summary
         "meeting_summary": None,
         "meeting_summary_sources": None,
@@ -168,7 +167,7 @@ def run_jpgovwatcher_v2(
 
     structured_overview = execution_state.get("structured_overview", "")
     initial_summary = execution_state.get("initial_summary", "")
-    final_summary = execution_state.get("final_review_summary") or execution_state.get("final_summary")
+    final_summary = execution_state.get("final_summary")
     document_summaries = execution_state.get("document_summaries", [])
 
     if not final_summary:

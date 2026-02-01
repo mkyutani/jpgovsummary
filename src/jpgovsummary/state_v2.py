@@ -27,7 +27,6 @@ class ActionStep(BaseModel):
         "score_documents",
         "summarize_selected_documents",
         "integrate_summaries",
-        "finalize",
         "post_to_bluesky",
     ] = Field(description="The type of action to perform")
     target: str = Field(description="URL or file path to process")
@@ -178,7 +177,6 @@ class ExecutionState(TypedDict):
     document_summaries: list[DocumentSummaryResult]  # Summaries from sub-agents
     scored_documents: list[ScoredDocument] | None  # Documents after scoring
     final_summary: str | None  # Integrated final summary
-    final_review_summary: str | None  # Human-reviewed summary (if not batch)
 
     # Meeting summary (from agenda/minutes)
     meeting_summary: str | None  # Consolidated meeting summary
@@ -330,7 +328,7 @@ def convert_plan_to_v1_state(plan_state: PlanState, execution_state: ExecutionSt
         "url": plan_state["input_url"],
         "overview": plan_state.get("overview"),
         "final_summary": execution_state.get("final_summary"),
-        "final_review_summary": execution_state.get("final_review_summary"),
+        "final_review_summary": execution_state.get("final_summary"),  # v2 uses final_summary for both
         "target_report_summaries": [
             Summary(
                 url=s.url,

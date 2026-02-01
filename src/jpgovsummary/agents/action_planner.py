@@ -242,18 +242,6 @@ class ActionPlanner:
             )
             priority += 1
 
-            # Add finalization step
-            steps.append(
-                ActionStep(
-                    action_type="finalize",
-                    target=input_url,
-                    params={"batch": state.get("batch", False)},
-                    priority=priority,
-                    estimated_tokens=500,
-                )
-            )
-            priority += 1
-
             # Add Bluesky posting step if not skipped
             if not state.get("skip_bluesky_posting", False):
                 steps.append(
@@ -331,13 +319,6 @@ class ActionPlanner:
                 priority=1,
                 estimated_tokens=1000,
             ),
-            ActionStep(
-                action_type="finalize",
-                target=input_url,
-                params={"batch": state.get("batch", False)},
-                priority=2,
-                estimated_tokens=500,
-            ),
         ]
 
         # Add Bluesky posting step if not skipped
@@ -347,7 +328,7 @@ class ActionPlanner:
                     action_type="post_to_bluesky",
                     target=input_url,
                     params={},
-                    priority=3,
+                    priority=2,
                     estimated_tokens=100,
                 )
             )
@@ -355,7 +336,7 @@ class ActionPlanner:
         action_plan = ActionPlan(
             steps=steps,
             reasoning=(
-                "Single PDF file processing. Plan: Detect type → Summarize → Integrate → Finalize."
+                "Single PDF file processing. Plan: Detect type → Summarize → Integrate."
             ),
             total_estimated_tokens=sum(s.estimated_tokens or 0 for s in steps),
         )
@@ -561,7 +542,6 @@ JSON配列で出力してください：
             "summarize_pdf": "PDF要約",
             "generate_initial_summary": "概要生成",
             "integrate_summaries": "要約統合",
-            "finalize": "最終化",
             "post_to_bluesky": "Bluesky投稿",
         }
 

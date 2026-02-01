@@ -54,7 +54,6 @@ class ActionExecutor:
             "summarize_pdf": "PDF要約",
             "generate_initial_summary": "概要生成",
             "integrate_summaries": "要約統合",
-            "finalize": "最終化",
             "post_to_bluesky": "Bluesky投稿",
         }
 
@@ -63,7 +62,6 @@ class ActionExecutor:
             "summarize_pdf": "📄",
             "generate_initial_summary": "📝",
             "integrate_summaries": "🔗",
-            "finalize": "✨",
             "post_to_bluesky": "🦋",
         }
 
@@ -469,8 +467,6 @@ class ActionExecutor:
             return self._execute_generate_initial_summary(step, state)
         elif step.action_type == "integrate_summaries":
             return self._execute_integrate_summaries(step, state)
-        elif step.action_type == "finalize":
-            return self._execute_finalize(step, state)
         elif step.action_type == "post_to_bluesky":
             return self._execute_post_to_bluesky(step, state)
         else:
@@ -1028,39 +1024,6 @@ class ActionExecutor:
             "document_count": len(document_summaries),
         }
 
-    def _execute_finalize(self, step: ActionStep, state: ExecutionState) -> dict:
-        """
-        Execute finalization step.
-
-        Handles human review (if not batch mode) and character limit checks.
-        """
-        batch = step.params.get("batch", False)
-        final_summary = state.get("final_summary") or ""
-
-        logger.info("Finalizing summary:")
-        logger.info(f"  - Batch mode: {batch}")
-        logger.info(f"  - Summary length: {len(final_summary)} characters")
-
-        if batch:
-            # Batch mode - skip human review
-            logger.info("Batch mode - skipping human review")
-            state["final_review_summary"] = final_summary
-            state["review_approved"] = True
-            state["review_completed"] = True
-        else:
-            # Interactive mode - would implement human review here
-            # For now, auto-approve
-            logger.info("Interactive mode - auto-approving for now")
-            # TODO: Implement interactive review using summary_finalizer logic
-            state["final_review_summary"] = final_summary
-            state["review_approved"] = True
-            state["review_completed"] = True
-
-        return {
-            "final_summary_length": len(state["final_review_summary"]),
-            "approved": state["review_approved"],
-        }
-
     def _execute_post_to_bluesky(self, step: ActionStep, state: ExecutionState) -> dict:
         """
         Execute Bluesky posting step.
@@ -1070,7 +1033,7 @@ class ActionExecutor:
         logger.info("🟢 Blueskyに投稿...")
 
         # Get final summary and URL
-        final_summary = state.get("final_review_summary") or state.get("final_summary", "")
+        final_summary = state.get("final_summary", "")
         url = step.target  # URL is stored in step.target by action_planner
 
         if not final_summary:
