@@ -586,8 +586,8 @@ JSON配列で出力してください：
                 category_ja = category_ja_map.get(category, "")
 
                 if doc_name:
-                    # Abbreviate long document names (max 30 chars)
-                    display_name = doc_name[:30] + "..." if len(doc_name) > 30 else doc_name
+                    # Abbreviate long document names (max 10 chars)
+                    display_name = doc_name[:7] + "..." if len(doc_name) > 10 else doc_name
                 else:
                     # Fallback to file name
                     display_name = (

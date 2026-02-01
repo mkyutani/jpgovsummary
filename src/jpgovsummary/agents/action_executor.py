@@ -96,7 +96,7 @@ class ActionExecutor:
             category_ja = self._category_ja.get(category, "")
 
             if doc_name:
-                display_name = doc_name[:30] + "..." if len(doc_name) > 30 else doc_name
+                display_name = doc_name[:7] + "..." if len(doc_name) > 10 else doc_name
             else:
                 display_name = step.target.split("/")[-1] if "/" in step.target else step.target
 
@@ -437,7 +437,7 @@ class ActionExecutor:
         if category_ja:
             log_prefix = category_ja
         else:
-            log_prefix = title[:25] + "..." if len(title) > 25 else title
+            log_prefix = title[:7] + "..." if len(title) > 10 else title
 
         logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
@@ -570,7 +570,7 @@ class ActionExecutor:
         if category_ja:
             log_prefix = category_ja
         else:
-            log_prefix = title[:25] + "..." if len(title) > 25 else title
+            log_prefix = title[:7] + "..." if len(title) > 10 else title
 
         logger.info(f"  [{log_prefix}] Generated summary: {len(summary)} characters")
 
