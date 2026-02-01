@@ -7,6 +7,9 @@ and collecting results in ExecutionState.
 Supports both sequential and parallel execution modes.
 """
 
+import json
+import os
+import subprocess
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
@@ -955,20 +958,129 @@ class ActionExecutor:
 
         Posts the finalized summary to Bluesky.
         """
-        final_summary = state.get("final_review_summary", "")
+        logger.info("🟢 Blueskyに投稿...")
+
+        # Get final summary and URL
+        final_summary = state.get("final_review_summary") or state.get("final_summary", "")
+        url = step.target  # URL is stored in step.target by action_planner
 
         if not final_summary:
-            logger.warning("No final summary to post")
+            logger.warning("⚠️ Bluesky投稿用の最終要約がありません")
+            state["bluesky_post_content"] = None
+            state["bluesky_post_response"] = None
             return {"posted": False, "reason": "No summary"}
 
-        # TODO: Implement Bluesky posting using bluesky_poster logic
-        logger.info("Bluesky posting - not yet implemented in v2")
-        logger.info(f"Would post: {len(final_summary)} characters")
+        try:
+            # Format post content
+            post_content = self._format_bluesky_content(final_summary, url)
 
-        state["bluesky_post_content"] = final_summary
-        state["bluesky_post_response"] = "Not implemented"
+            # Post to Bluesky via ssky
+            # v2 does not support interactive mode, so always auto-post
+            post_result = self._post_to_bluesky_via_ssky(post_content)
 
-        return {
-            "posted": False,
-            "reason": "Not yet implemented in v2",
-        }
+            if post_result["success"]:
+                logger.info("✅ Blueskyへの投稿に成功しました")
+                if post_result.get("uri"):
+                    logger.debug(f"URI: {post_result['uri']}")
+                state["bluesky_post_content"] = post_content
+                if post_result.get("result"):
+                    state["bluesky_post_response"] = str(post_result["result"])
+                return {
+                    "posted": True,
+                    "uri": post_result.get("uri"),
+                    "content_length": len(post_content),
+                }
+            else:
+                logger.error(f"❌ Bluesky投稿に失敗しました: {post_result['error']}")
+                state["bluesky_post_content"] = post_content
+                state["bluesky_post_response"] = f"Error: {post_result['error']}"
+                return {
+                    "posted": False,
+                    "reason": post_result["error"],
+                }
+
+        except Exception as e:
+            logger.error(f"❌ Bluesky投稿で想定しないエラーが発生しました: {type(e).__name__}: {e}")
+            state["bluesky_post_content"] = None
+            state["bluesky_post_response"] = f"Exception: {type(e).__name__}: {e}"
+            return {
+                "posted": False,
+                "reason": f"Exception: {type(e).__name__}: {e}",
+            }
+
+    def _format_bluesky_content(self, summary: str, url: str) -> str:
+        """
+        Format content for Bluesky posting.
+
+        Only appends URL if it's a web URL (http/https).
+        Local file paths are not appended.
+        """
+        # Check if URL is a web URL
+        if url and (url.startswith("http://") or url.startswith("https://")):
+            return f"{summary}\n{url}"
+        else:
+            # Don't append local file paths
+            return summary
+
+    def _post_to_bluesky_via_ssky(self, content: str) -> dict:
+        """
+        Post to Bluesky by executing ssky command directly.
+
+        Returns:
+            dict with keys: success, content, result, uri, error
+        """
+        # Get SSKY_USER from environment
+        ssky_user = os.getenv("SSKY_USER")
+        if not ssky_user:
+            error_msg = "SSKY_USER environment variable not set. Format: 'USER:PASSWORD'"
+            logger.error(f"❌ {error_msg}")
+            return {"success": False, "content": content, "result": None, "error": error_msg}
+
+        try:
+            # Execute ssky post command
+            result = subprocess.run(
+                ["ssky", "post", "--json", content],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode == 0:
+                # Parse JSON response on success
+                try:
+                    response_data = json.loads(result.stdout)
+                    uri = response_data.get("uri")
+                    return {
+                        "success": True,
+                        "content": content,
+                        "result": result.stdout,
+                        "uri": uri,
+                        "error": None,
+                    }
+                except json.JSONDecodeError:
+                    # If JSON parsing fails but returncode is 0, treat as success
+                    return {
+                        "success": True,
+                        "content": content,
+                        "result": result.stdout,
+                        "uri": None,
+                        "error": None,
+                    }
+            else:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                logger.error(f"❌ sskyコマンドが失敗しました: {error_msg}")
+                return {
+                    "success": False,
+                    "content": content,
+                    "result": None,
+                    "error": error_msg,
+                }
+
+        except subprocess.TimeoutExpired:
+            error_msg = "sskyコマンドがタイムアウトしました (30秒)"
+            logger.error(f"❌ {error_msg}")
+            return {"success": False, "content": content, "result": None, "error": error_msg}
+        except Exception as e:
+            error_msg = f"sskyコマンド実行エラー: {e}"
+            logger.error(f"❌ {error_msg}")
+            return {"success": False, "content": content, "result": None, "error": error_msg}
