@@ -394,6 +394,16 @@ class ActionExecutor:
         url = step.target
         category = step.params.get("category")
 
+        # Determine log prefix early: prefer doc_name, fallback to category_ja
+        doc_name = step.params.get("doc_name", "") if step.params else ""
+        category_ja = self._category_ja.get(category, "")
+        if doc_name:
+            log_prefix = doc_name[:7] + "..." if len(doc_name) > 10 else doc_name
+        elif category_ja:
+            log_prefix = category_ja
+        else:
+            log_prefix = "文書"
+
         # For agenda documents, skip LLM and use raw PDF text
         if category == "agenda":
             pdf_pages = load_pdf_as_text(url)
@@ -404,7 +414,7 @@ class ActionExecutor:
             pdf_pages = load_pdf_as_text(url)
             # Detect document type
             detection_result = self.document_type_detector.invoke(
-                {"pdf_pages": pdf_pages[:10], "url": url}
+                {"pdf_pages": pdf_pages[:10], "url": url, "display_name": log_prefix}
             )
 
             document_type = detection_result["document_type"]
@@ -412,11 +422,11 @@ class ActionExecutor:
             # Select appropriate summarizer
             if document_type == "PowerPoint":
                 summarizer_result = self.powerpoint_summarizer.invoke(
-                    {"pdf_pages": pdf_pages, "url": url}
+                    {"pdf_pages": pdf_pages, "url": url, "display_name": log_prefix}
                 )
             else:
                 summarizer_result = self.word_summarizer.invoke(
-                    {"pdf_pages": pdf_pages, "url": url}
+                    {"pdf_pages": pdf_pages, "url": url, "display_name": log_prefix}
                 )
 
             summary = summarizer_result.get("summary", "")
@@ -429,13 +439,6 @@ class ActionExecutor:
             document_type=document_type,
             category=category,
         )
-
-        # Determine log prefix: prefer category_ja, fallback to title
-        category_ja = self._category_ja.get(category, "")
-        if category_ja:
-            log_prefix = category_ja
-        else:
-            log_prefix = title[:7] + "..." if len(title) > 10 else title
 
         logger.info(f"  [{log_prefix}] 要約完了 ({len(summary)}文字)")
 
@@ -487,6 +490,16 @@ class ActionExecutor:
         url = step.target
         category = step.params.get("category")
 
+        # Determine log prefix early: prefer doc_name, fallback to category_ja
+        doc_name = step.params.get("doc_name", "") if step.params else ""
+        category_ja = self._category_ja.get(category, "")
+        if doc_name:
+            log_prefix = doc_name[:7] + "..." if len(doc_name) > 10 else doc_name
+        elif category_ja:
+            log_prefix = category_ja
+        else:
+            log_prefix = "文書"
+
         logger.info(f"Loading PDF from: {url}")
         pdf_pages = load_pdf_as_text(url)
         logger.info(f"Loaded {len(pdf_pages)} pages")
@@ -504,6 +517,7 @@ class ActionExecutor:
                 {
                     "pdf_pages": pdf_pages[:10],  # First 10 pages for detection
                     "url": url,
+                    "display_name": log_prefix,
                 }
             )
 
@@ -520,6 +534,7 @@ class ActionExecutor:
                     {
                         "pdf_pages": pdf_pages,
                         "url": url,
+                        "display_name": log_prefix,
                     }
                 )
             elif document_type == "word":
@@ -528,6 +543,7 @@ class ActionExecutor:
                     {
                         "pdf_pages": pdf_pages,
                         "url": url,
+                        "display_name": log_prefix,
                     }
                 )
             else:
@@ -539,6 +555,7 @@ class ActionExecutor:
                     {
                         "pdf_pages": pdf_pages,
                         "url": url,
+                        "display_name": log_prefix,
                     }
                 )
 
@@ -560,13 +577,6 @@ class ActionExecutor:
 
         # Store in state
         state["document_summaries"].append(doc_summary)
-
-        # Determine log prefix: prefer category_ja, fallback to title
-        category_ja = self._category_ja.get(category, "")
-        if category_ja:
-            log_prefix = category_ja
-        else:
-            log_prefix = title[:7] + "..." if len(title) > 10 else title
 
         logger.info(f"  [{log_prefix}] Generated summary: {len(summary)} characters")
 

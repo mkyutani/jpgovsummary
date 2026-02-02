@@ -117,6 +117,7 @@ class PowerPointSummarizer:
         """
         llm = self.model.llm()
         pdf_pages = state["pdf_pages"]
+        display_name = state.get("display_name", "")
 
         # Analyze first 3 pages for title extraction
         pages_to_analyze = min(3, len(pdf_pages))
@@ -155,7 +156,8 @@ class PowerPointSummarizer:
         result = chain.invoke({"text": merged_text})
         extracted_title = result.content.strip()
 
-        logger.info(f"PowerPointタイトル抽出: 「{extracted_title.replace('\n', '\\n')}」")
+        log_prefix = f"[{display_name}] " if display_name else ""
+        logger.info(f"{log_prefix}PowerPointタイトル抽出: 「{extracted_title.replace('\n', '\\n')}」")
 
         return {"title": extracted_title}
 
@@ -177,30 +179,32 @@ class PowerPointSummarizer:
         pdf_pages = state["pdf_pages"]
         total_pages = len(pdf_pages)
         all_slides = []
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         logger.info(
-            f"スライド分析開始: 総ページ数={total_pages}, バッチサイズ={self.PAGES_PER_BATCH}"
+            f"{log_prefix}スライド分析開始: 総ページ数={total_pages}, バッチサイズ={self.PAGES_PER_BATCH}"
         )
 
         for start_page in range(0, total_pages, self.PAGES_PER_BATCH):
             end_page = min(start_page + self.PAGES_PER_BATCH - 1, total_pages - 1)
             try:
-                logger.info(f"バッチ処理中 (ページ{start_page+1}-{end_page+1}/{total_pages})")
+                logger.info(f"{log_prefix}バッチ処理中 (ページ{start_page+1}-{end_page+1}/{total_pages})")
                 slide_analysis = self._analyze_slide_batch(pdf_pages, start_page, end_page)
 
                 for slide in slide_analysis.slides:
                     logger.info(
-                        f"  ページ{slide.page}: {slide.title} → スコア: {slide.score} - {slide.reason}"
+                        f"{log_prefix}  ページ{slide.page}: {slide.title} → スコア: {slide.score} - {slide.reason}"
                     )
                 all_slides.extend(slide_analysis.slides)
 
             except Exception as e:
                 logger.warning(
-                    f"⚠️ バッチ分析失敗 (ページ{start_page+1}-{end_page+1}): {e}"
+                    f"{log_prefix}⚠️ バッチ分析失敗 (ページ{start_page+1}-{end_page+1}): {e}"
                 )
                 # Continue processing remaining batches even if one fails
 
-        logger.info(f"スライド分析完了: {len(all_slides)}枚のスライドを分析")
+        logger.info(f"{log_prefix}スライド分析完了: {len(all_slides)}枚のスライドを分析")
 
         # Convert Pydantic objects to dicts for state storage
         scored_slides = [
@@ -349,6 +353,8 @@ class PowerPointSummarizer:
         pdf_pages = state["pdf_pages"]
         title = state.get("title", "")
         scored_slides_dicts = state.get("scored_slides", [])
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Convert dicts back to SlideInfo objects
         scored_slides = [
@@ -365,7 +371,7 @@ class PowerPointSummarizer:
             merged_content = "\n\n".join(
                 [f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(pdf_pages)]
             )
-            logger.info("⚠️ スライド分析結果なし - 全ページ使用")
+            logger.info(f"{log_prefix}⚠️ スライド分析結果なし - 全ページ使用")
             return {"selected_content": merged_content}
 
         # Sort by score and select top-scoring slides
@@ -373,7 +379,7 @@ class PowerPointSummarizer:
         max_score = sorted_slides[0].score
         top_slides = [slide for slide in sorted_slides if slide.score == max_score]
 
-        logger.info(f"最高スコア: {max_score}点, 該当スライド: {len(top_slides)}枚")
+        logger.info(f"{log_prefix}最高スコア: {max_score}点, 該当スライド: {len(top_slides)}枚")
 
         # Title-related keyword matching
         basic_keywords = ["概要", "基本方針", "ポイント", "要求", "予算", "全体", "総額", "方針", "要点", "まとめ"]
@@ -404,7 +410,7 @@ class PowerPointSummarizer:
         all_selected_slides = sorted(all_selected_slides, key=lambda x: x.page)
 
         logger.info(
-            f"Selected: {','.join([f'{slide.page}' for slide in all_selected_slides])} "
+            f"{log_prefix}Selected: {','.join([f'{slide.page}' for slide in all_selected_slides])} "
             f"({len(all_selected_slides)}/{total_pages}枚)"
         )
 
@@ -440,6 +446,8 @@ class PowerPointSummarizer:
         llm = self.model.llm()
         title = state.get("title", "")
         selected_content = state.get("selected_content", "")
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         summary_prompt = PromptTemplate(
             input_variables=["title", "content"],
@@ -512,7 +520,7 @@ class PowerPointSummarizer:
         result = chain.invoke({"title": title, "content": selected_content})
 
         summary = result.content.strip()
-        logger.info(f"PowerPoint要約生成完了 ({len(summary)}文字)")
+        logger.info(f"{log_prefix}PowerPoint要約生成完了 ({len(summary)}文字)")
 
         return {"summary": summary}
 

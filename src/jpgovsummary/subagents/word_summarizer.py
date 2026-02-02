@@ -91,6 +91,8 @@ class WordSummarizer:
         """
         llm = self.model.llm()
         pdf_pages = state["pdf_pages"]
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Analyze first N pages
         title_pages = min(self.MAX_PAGES_FOR_TITLE, len(pdf_pages))
@@ -98,7 +100,7 @@ class WordSummarizer:
             [f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(pdf_pages[:title_pages])]
         )
 
-        logger.info(f"先頭{title_pages}ページからタイトルを抽出します")
+        logger.info(f"{log_prefix}先頭{title_pages}ページからタイトルを抽出します")
 
         title_prompt = PromptTemplate(
             input_variables=["text"],
@@ -117,7 +119,7 @@ class WordSummarizer:
         result = chain.invoke({"text": merged_text})
         extracted_title = result.content.strip()
 
-        logger.info(f"抽出されたタイトル: {extracted_title}")
+        logger.info(f"{log_prefix}抽出されたタイトル: {extracted_title}")
 
         return {"title": extracted_title}
 
@@ -133,6 +135,8 @@ class WordSummarizer:
         """
         llm = self.model.llm()
         pdf_pages = state["pdf_pages"]
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Analyze first N pages
         toc_pages = min(self.MAX_PAGES_FOR_TOC, len(pdf_pages))
@@ -140,7 +144,7 @@ class WordSummarizer:
             [f"--- ページ {i+1} ---\n{text}" for i, text in enumerate(pdf_pages[:toc_pages])]
         )
 
-        logger.info(f"先頭{toc_pages}ページから目次（ページ番号付き）を抽出します")
+        logger.info(f"{log_prefix}先頭{toc_pages}ページから目次（ページ番号付き）を抽出します")
 
         toc_prompt = PromptTemplate(
             input_variables=["text"],
@@ -195,10 +199,9 @@ class WordSummarizer:
         extracted_toc = result.content.strip()
 
         if extracted_toc and "目次なし" not in extracted_toc:
-            logger.info("目次を抽出しました")
-            logger.info(f"目次内容:\n{extracted_toc}...")
+            logger.info(f"{log_prefix}目次を抽出しました")
         else:
-            logger.info("目次が見つかりませんでした")
+            logger.info(f"{log_prefix}目次が見つかりませんでした")
 
         return {"table_of_contents": [{"type": "toc", "content": extracted_toc}]}
 
@@ -216,6 +219,8 @@ class WordSummarizer:
         table_of_contents = state.get("table_of_contents", [])
         pdf_pages = state["pdf_pages"]
         total_pages = len(pdf_pages)
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Check if TOC exists
         has_toc = False
@@ -229,11 +234,11 @@ class WordSummarizer:
                     break
 
         if not has_toc:
-            logger.info("目次がないため、全ページから要約を作成します")
+            logger.info(f"{log_prefix}目次がないため、全ページから要約を作成します")
             # Mark that full text will be used (handled in generate_summary)
             return {}
 
-        logger.info("目次から重要なセクションとページ番号を特定します")
+        logger.info(f"{log_prefix}目次から重要なセクションとページ番号を特定します")
 
         parser = PydanticOutputParser(pydantic_object=ImportantSections)
 
@@ -319,16 +324,16 @@ class WordSummarizer:
 
             # Sort by score (descending)
             sorted_sections = sorted(important_sections, key=lambda x: x.score, reverse=True)
-            logger.info(f"{len(sorted_sections)}個のセクションをスコアリングしました")
+            logger.info(f"{log_prefix}{len(sorted_sections)}個のセクションをスコアリングしました")
 
             # Filter by score (4-5 points)
             high_priority_sections = [s for s in sorted_sections if s.score >= 4]
 
             if not high_priority_sections:
-                logger.warning("スコア4点以上のセクションがありません。スコア3点以上を使用します。")
+                logger.warning(f"{log_prefix}スコア4点以上のセクションがありません。スコア3点以上を使用します。")
                 high_priority_sections = [s for s in sorted_sections if s.score >= 3]
 
-            logger.info(f"高優先度セクション: {len(high_priority_sections)}個（スコア4-5点）")
+            logger.info(f"{log_prefix}高優先度セクション: {len(high_priority_sections)}個（スコア4-5点）")
 
             # Extract page numbers
             pages_to_read = set()
@@ -339,24 +344,24 @@ class WordSummarizer:
                     for p in range(max(1, page_num - 1), min(total_pages + 1, page_num + 2)):
                         pages_to_read.add(p)
                     logger.info(
-                        f"  - [{section.score}点] {section.section_title} (ページ{section.page_number}): {section.reason}"
+                        f"{log_prefix}  - [{section.score}点] {section.section_title} (ページ{section.page_number}): {section.reason}"
                     )
                 else:
                     logger.info(
-                        f"  - [{section.score}点] {section.section_title} (ページ不明): {section.reason}"
+                        f"{log_prefix}  - [{section.score}点] {section.section_title} (ページ不明): {section.reason}"
                     )
 
             # Limit to MAX_PAGES_TO_READ
             if len(pages_to_read) > self.MAX_PAGES_TO_READ:
                 logger.warning(
-                    f"選択ページ数が{len(pages_to_read)}ページで上限を超えています。"
+                    f"{log_prefix}選択ページ数が{len(pages_to_read)}ページで上限を超えています。"
                     f"最初の{self.MAX_PAGES_TO_READ}ページのみ使用します。"
                 )
                 pages_to_read = set(sorted(pages_to_read)[:self.MAX_PAGES_TO_READ])
 
             if pages_to_read:
                 sorted_pages = sorted(pages_to_read)
-                logger.info(f"読み込むページ: {sorted_pages} (合計{len(sorted_pages)}ページ)")
+                logger.info(f"{log_prefix}読み込むページ: {sorted_pages} (合計{len(sorted_pages)}ページ)")
 
                 # Store selected pages and sections info
                 return {
@@ -377,12 +382,12 @@ class WordSummarizer:
                     ]
                 }
             else:
-                logger.warning("ページ番号が特定できませんでした。目次のみで要約します。")
+                logger.warning(f"{log_prefix}ページ番号が特定できませんでした。目次のみで要約します。")
                 return {}
 
         except Exception as e:
-            logger.error(f"重要セクション特定中にエラー: {e}")
-            logger.info("フォールバック：目次のみで要約します")
+            logger.error(f"{log_prefix}重要セクション特定中にエラー: {e}")
+            logger.info(f"{log_prefix}フォールバック：目次のみで要約します")
             return {}
 
     def _generate_summary(self, state: WordState) -> WordState:
@@ -399,6 +404,8 @@ class WordSummarizer:
         title = state.get("title", "")
         table_of_contents = state.get("table_of_contents", [])
         pdf_pages = state["pdf_pages"]
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Check if we have selected pages
         has_selected_pages = False
@@ -415,7 +422,7 @@ class WordSummarizer:
                     for page_num in page_numbers
                     if 0 < page_num <= len(pdf_pages)
                 ]
-                logger.info(f"選択された{len(selected_pages)}ページから要約を作成します")
+                logger.info(f"{log_prefix}選択された{len(selected_pages)}ページから要約を作成します")
             elif toc_item.get("type") == "toc":
                 toc_content = toc_item.get("content", "")
 
@@ -485,7 +492,7 @@ class WordSummarizer:
 
         elif toc_content and "目次なし" not in toc_content:
             # TOC-only summarization
-            logger.info("目次のみから要約を作成します")
+            logger.info(f"{log_prefix}目次のみから要約を作成します")
 
             toc_summary_prompt = PromptTemplate(
                 input_variables=["title", "toc"],
@@ -514,7 +521,7 @@ class WordSummarizer:
 
         else:
             # Full-text summarization (fallback)
-            logger.info("目次も選択ページもないため、全文から要約を作成します")
+            logger.info(f"{log_prefix}目次も選択ページもないため、全文から要約を作成します")
 
             documents = [
                 Document(page_content=text, metadata={"page": i + 1})
@@ -539,7 +546,7 @@ class WordSummarizer:
             result = chain.invoke({"input_documents": documents})
             summary = result["output_text"].strip()
 
-        logger.info(f"Word要約生成完了 ({len(summary)}文字)")
+        logger.info(f"{log_prefix}Word要約生成完了 ({len(summary)}文字)")
 
         return {"summary": summary}
 

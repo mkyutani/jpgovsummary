@@ -89,12 +89,14 @@ class DocumentTypeDetector:
         """
         llm = self.model.llm()
         pdf_pages = state["pdf_pages"]
+        display_name = state.get("display_name", "")
+        log_prefix = f"[{display_name}] " if display_name else ""
 
         # Analyze first N pages
         pages_to_analyze = min(self.MAX_PAGES_TO_ANALYZE, len(pdf_pages))
         sample_texts = pdf_pages[:pages_to_analyze]
 
-        logger.info(f"先頭{len(sample_texts)}ページを分析して文書タイプを判定します")
+        logger.info(f"{log_prefix}先頭{len(sample_texts)}ページを分析して文書タイプを判定します")
 
         # Prepare text for analysis
         if pages_to_analyze == 1:
@@ -254,10 +256,10 @@ PDFテキスト:
         # Log results
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         logger.info(
-            f"この文書を{doc_type}と推定しました({', '.join([f'{cat}:{score}' for cat, score in sorted_scores])})"
+            f"{log_prefix}この文書を{doc_type}と推定しました({', '.join([f'{cat}:{score}' for cat, score in sorted_scores])})"
         )
-        logger.info(f"推定理由: {doc_reason.replace('\n', '\\n')}")
-        logger.info(f"根拠: {selected_evidence.replace('\n', '\\n')}")
+        logger.info(f"{log_prefix}推定理由: {doc_reason.replace('\n', '\\n')}")
+        logger.info(f"{log_prefix}根拠: {selected_evidence.replace('\n', '\\n')}")
 
         # Prepare confidence scores (normalized to 0-1)
         max_possible_score = 5.0

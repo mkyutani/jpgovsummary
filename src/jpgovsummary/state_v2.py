@@ -210,6 +210,7 @@ class PowerPointState(TypedDict):
     # Input
     pdf_pages: list[str]  # Text content of PDF pages
     url: str  # Source URL for reference
+    display_name: str | None  # Display name for log prefix (e.g., "議事次第", "資料1")
 
     # Intermediate results
     title: str | None  # Extracted presentation title
@@ -230,6 +231,7 @@ class WordState(TypedDict):
     # Input
     pdf_pages: list[str]  # Text content of PDF pages
     url: str  # Source URL for reference
+    display_name: str | None  # Display name for log prefix (e.g., "議事次第", "資料1")
 
     # Intermediate results
     title: str | None  # Extracted document title
@@ -249,6 +251,7 @@ class DocumentTypeDetectorState(TypedDict):
     # Input
     pdf_pages: list[str]  # First 10 pages of PDF
     url: str  # Source URL for reference
+    display_name: str | None  # Display name for log prefix (e.g., "議事次第", "資料1")
 
     # Output
     document_type: str  # Detected type (PowerPoint/Word/Agenda/etc)
