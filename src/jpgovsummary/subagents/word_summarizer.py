@@ -14,7 +14,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from .. import Model, logger
-from ..state_v2 import WordState
+from ..state import WordState
 
 
 class ImportantSection(BaseModel):

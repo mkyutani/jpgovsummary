@@ -8,7 +8,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
-from .. import CandidateReportList, Config, Model, State, logger
+from ... import Config, Model, logger
+from .. import CandidateReportList, State
 
 
 def report_enumerator(state: State) -> State:

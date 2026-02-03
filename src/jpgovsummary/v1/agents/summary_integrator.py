@@ -3,8 +3,9 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 
-from .. import Model, State, logger
-from ..config import MAX_CHARS_SUMMARY
+from ... import Model, logger
+from ...config import MAX_CHARS_SUMMARY
+from .. import State
 
 
 def extract_context_from_messages(messages: list) -> dict:

@@ -12,7 +12,7 @@ from typing import Literal
 from jpgovsummary import Model, logger
 from jpgovsummary.agents.action_executor import ActionExecutor
 from jpgovsummary.agents.action_planner import ActionPlanner
-from jpgovsummary.state_v2 import ExecutionState, PlanState
+from jpgovsummary.state import ExecutionState, PlanState
 
 
 def detect_input_type(url: str) -> Literal["html_meeting", "pdf_file"]:
@@ -41,7 +41,7 @@ def detect_input_type(url: str) -> Literal["html_meeting", "pdf_file"]:
     return "html_meeting"
 
 
-def run_jpgovwatcher_v2(
+def run_v2(
     url: str,
     model: Model | None = None,
     batch: bool = False,
@@ -259,7 +259,7 @@ def main():
         model = Model()
 
     try:
-        result = run_jpgovwatcher_v2(
+        result = run_v2(
             url=args.url,
             model=model,
             batch=args.batch,

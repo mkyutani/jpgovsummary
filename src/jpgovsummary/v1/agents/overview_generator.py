@@ -6,7 +6,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
-from .. import Config, Model, State, logger
+from ... import Config, Model, logger
+from .. import State
 
 
 def overview_generator(state: State) -> dict:

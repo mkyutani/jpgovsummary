@@ -4,8 +4,9 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 
-from .. import Model, State, Summary, logger
-from ..tools import load_pdf_as_text
+from ... import Model, logger
+from ...tools import load_pdf_as_text
+from .. import State, Summary
 
 
 def detect_document_type(texts: list[str]) -> tuple[str, str, str, dict]:

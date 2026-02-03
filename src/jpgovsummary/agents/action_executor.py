@@ -14,7 +14,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 from .. import Model, logger
-from ..state_v2 import (
+from ..state import (
     ActionStep,
     CompletedAction,
     DocumentSummaryResult,

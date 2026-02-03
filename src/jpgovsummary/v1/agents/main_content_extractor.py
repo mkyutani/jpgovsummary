@@ -6,8 +6,9 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
-from .. import Config, Model, State, logger
-from ..tools import load_html_as_markdown
+from ... import Config, Model, logger
+from ...tools import load_html_as_markdown
+from .. import State
 
 
 def main_content_extractor(state: State) -> dict:

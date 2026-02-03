@@ -27,7 +27,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 from jpgovsummary import Model, logger
-from jpgovsummary.state_v2 import PowerPointState
+from jpgovsummary.state import PowerPointState
 
 
 class SlideInfo(BaseModel):

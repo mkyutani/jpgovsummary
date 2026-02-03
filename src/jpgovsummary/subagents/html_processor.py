@@ -18,7 +18,7 @@ from langchain_core.prompts import (
 from langgraph.graph import END, StateGraph
 
 from .. import Model, logger
-from ..state_v2 import DiscoveredDocument, DiscoveredDocumentList, HTMLProcessorState
+from ..state import DiscoveredDocument, DiscoveredDocumentList, HTMLProcessorState
 from ..tools import load_html_as_markdown
 from .meeting_summary_extractor import MeetingSummaryExtractor
 

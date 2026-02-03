@@ -9,7 +9,7 @@ from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 from .. import Model, logger
-from ..state_v2 import ActionPlan, ActionStep, PlanState, ScoredDocument
+from ..state import ActionPlan, ActionStep, PlanState, ScoredDocument
 from ..subagents import HTMLProcessor
 
 

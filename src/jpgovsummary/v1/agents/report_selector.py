@@ -6,7 +6,8 @@ from langchain_core.prompts import (
     SystemMessagePromptTemplate,
 )
 
-from .. import Config, Model, ScoredReportList, State, TargetReportList, logger
+from ... import Config, Model, logger
+from .. import ScoredReportList, State, TargetReportList
 
 
 def report_selector(state: State) -> State:
