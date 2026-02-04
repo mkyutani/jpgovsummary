@@ -1144,11 +1144,13 @@ class ActionExecutor:
         """
         Format content for Bluesky posting.
 
-        Only appends URL if it's a web URL (http/https).
+        Only appends URL if it's a web URL (http/https) and not already in summary.
         Local file paths are not appended.
         """
-        # Check if URL is a web URL
+        # Check if URL is a web URL and not already in summary
         if url and (url.startswith("http://") or url.startswith("https://")):
+            if url in summary:
+                return summary
             return f"{summary}\n{url}"
         else:
             # Don't append local file paths
