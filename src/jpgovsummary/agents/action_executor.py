@@ -419,12 +419,18 @@ class ActionExecutor:
 
             document_type = detection_result["document_type"]
 
-            # Select appropriate summarizer
-            if document_type == "PowerPoint":
+            # Select appropriate summarizer (normalize to lowercase)
+            doc_type_lower = document_type.lower()
+            if doc_type_lower == "powerpoint":
                 summarizer_result = self.powerpoint_summarizer.invoke(
                     {"pdf_pages": pdf_pages, "url": url, "display_name": log_prefix}
                 )
+            elif doc_type_lower == "word":
+                summarizer_result = self.word_summarizer.invoke(
+                    {"pdf_pages": pdf_pages, "url": url, "display_name": log_prefix}
+                )
             else:
+                # Fallback: Try Word summarizer for other types
                 summarizer_result = self.word_summarizer.invoke(
                     {"pdf_pages": pdf_pages, "url": url, "display_name": log_prefix}
                 )
@@ -527,8 +533,9 @@ class ActionExecutor:
             logger.info(f"Detected type: {document_type}")
             logger.info(f"Confidence scores: {confidence_scores}")
 
-            # Select appropriate summarizer
-            if document_type == "powerpoint":
+            # Select appropriate summarizer (normalize to lowercase)
+            doc_type_lower = document_type.lower()
+            if doc_type_lower == "powerpoint":
                 logger.info("Using PowerPointSummarizer sub-agent")
                 summarizer_result = self.powerpoint_summarizer.invoke(
                     {
@@ -537,7 +544,7 @@ class ActionExecutor:
                         "display_name": log_prefix,
                     }
                 )
-            elif document_type == "word":
+            elif doc_type_lower == "word":
                 logger.info("Using WordSummarizer sub-agent")
                 summarizer_result = self.word_summarizer.invoke(
                     {
