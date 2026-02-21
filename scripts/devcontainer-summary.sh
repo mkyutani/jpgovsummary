@@ -12,10 +12,24 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+# Container name defined in .devcontainer/devcontainer.json runArgs
+CONTAINER_NAME="jpgovsummary-devcontainer"
+
+# Ensure container is running
+if docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null | grep -q "true"; then
+    : # already running
+elif docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+    echo "Starting devcontainer..." >&2
+    docker start "$CONTAINER_NAME" >/dev/null
+else
+    echo "Error: Devcontainer '$CONTAINER_NAME' not found. Create it from VSCode first." >&2
+    exit 1
+fi
+
 # Process each URL/file path in order
 for target in "$@"; do
     echo "Processing: $target" >&2
-    docker exec -it jpgovsummary-devcontainer bash -l -c "cd /workspaces/jpgovsummary && poetry run jpgovsummary --batch $JPGOVSUMMARY_OPTIONS '$target'"
+    docker exec "$CONTAINER_NAME" bash -l -c "cd /workspaces/jpgovsummary && poetry run jpgovsummary --batch $JPGOVSUMMARY_OPTIONS '$target'"
 
     # Check exit status
     if [ $? -ne 0 ]; then
