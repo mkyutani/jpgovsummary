@@ -269,7 +269,7 @@ class PowerPointSummarizer:
 以下の基準に従ってスコアリングしてください：
 
 **5点（最重要）:**
-- アジェンダ、目次、セクション見出し
+- アジェンダ、目次
 - 主な論点、検討事項、今回の論点
 - まとめ、結論、骨子
 
@@ -287,6 +287,7 @@ class PowerPointSummarizer:
 - 詳細説明、補足資料
 - 事例紹介、参考資料
 - 個別取組の詳細
+- セクション見出し（タイトルのみで内容がない仕切りスライド）
 
 **1点（最低優先）:**
 - 表紙、タイトルページ
@@ -338,20 +339,18 @@ class PowerPointSummarizer:
         Select high-scoring slides for summarization (non-LLM logic).
 
         Selection strategy:
-        1. Select all slides with maximum score
-        2. Add up to 2 title-related slides (score >= 4)
-        3. Sort by page number for coherent reading
+        1. Select all slides with score >= 4
+        2. Sort by page number for coherent reading
 
         This is a deterministic, non-LLM step for efficiency.
 
         Args:
-            state: Current PowerPointState with title and scored_slides
+            state: Current PowerPointState with scored_slides
 
         Returns:
             Updated state with selected_content field
         """
         pdf_pages = state["pdf_pages"]
-        title = state.get("title", "")
         scored_slides_dicts = state.get("scored_slides", [])
         display_name = state.get("display_name", "")
         log_prefix = f"[{display_name}] " if display_name else ""
@@ -374,49 +373,26 @@ class PowerPointSummarizer:
             logger.info(f"{log_prefix}⚠️ スライド分析結果なし - 全ページ使用")
             return {"selected_content": merged_content}
 
-        # Sort by score and select top-scoring slides
-        sorted_slides = sorted(scored_slides, key=lambda x: x.score, reverse=True)
-        max_score = sorted_slides[0].score
-        top_slides = [slide for slide in sorted_slides if slide.score == max_score]
+        # Select all slides with score >= 4
+        selected_slides = [slide for slide in scored_slides if slide.score >= 4]
 
-        logger.info(f"{log_prefix}最高スコア: {max_score}点, 該当スライド: {len(top_slides)}枚")
+        if not selected_slides:
+            # Fallback: use top-scoring slides if none scored >= 4
+            max_score = max(slide.score for slide in scored_slides)
+            selected_slides = [slide for slide in scored_slides if slide.score == max_score]
+            logger.info(f"{log_prefix}スコア4以上なし - 最高スコア{max_score}点のスライドを使用")
 
-        # Title-related keyword matching
-        basic_keywords = ["概要", "基本方針", "ポイント", "要求", "予算", "全体", "総額", "方針", "要点", "まとめ"]
-
-        # Extract title-specific keywords
-        title_lower = title.lower()
-        title_keywords = []
-        if "予算" in title_lower:
-            title_keywords.extend(["概算要求", "要求額", "府省庁別", "要求"])
-        if "国土強靱化" in title_lower:
-            title_keywords.extend(["国土強靱化", "防災", "強靱化"])
-        if "施策" in title_lower or "政策" in title_lower:
-            title_keywords.extend(["施策", "政策", "取組", "対策"])
-
-        all_keywords = basic_keywords + title_keywords
-        title_related_slides = []
-
-        for slide in sorted_slides:
-            if slide.score >= 4 and slide not in top_slides:
-                slide_title_lower = slide.title.lower()
-                if any(keyword in slide_title_lower for keyword in all_keywords):
-                    title_related_slides.append(slide)
-
-        # Combine top slides + up to 2 title-related slides
-        all_selected_slides = top_slides + title_related_slides[:2]
-
-        # Sort by page number
-        all_selected_slides = sorted(all_selected_slides, key=lambda x: x.page)
+        # Sort by page number for coherent reading
+        selected_slides = sorted(selected_slides, key=lambda x: x.page)
 
         logger.info(
-            f"{log_prefix}Selected: {','.join([f'{slide.page}' for slide in all_selected_slides])} "
-            f"({len(all_selected_slides)}/{total_pages}枚)"
+            f"{log_prefix}選択スライド: {','.join([f'p{slide.page}({slide.score}点)' for slide in selected_slides])} "
+            f"({len(selected_slides)}/{total_pages}枚)"
         )
 
         # Extract selected slide texts
         selected_texts = []
-        for slide in all_selected_slides:
+        for slide in selected_slides:
             page_idx = slide.page - 1  # Convert 1-based to 0-based
             if 0 <= page_idx < len(pdf_pages):
                 selected_texts.append(
@@ -451,49 +427,18 @@ class PowerPointSummarizer:
 
         summary_prompt = PromptTemplate(
             input_variables=["title", "content"],
-            template="""あなたはPowerPoint資料の要約の専門家です。以下の重要スライドから詳細で網羅的な要約を作成してください。
+            template="""あなたはPowerPoint資料の要約の専門家です。
 
-# 資料タイトル
-「{title}」
-
-# 選択された重要スライド
-{content}
+# 最重要ルール
+- <input>タグ内に明示的に書かれている情報のみを使用すること
+- 推測・創作・補完は一切行わないこと
+- 「〜と考えられる」「〜が想定される」「〜が見込まれる」等の推測表現は絶対に使用しないこと
+- 情報が少ない場合は短くてよい（無理に長くしない、同じ内容を繰り返さない）
 
 # 要約作成手順
-ステップ1: 資料の目的と性質を理解する
-- この資料は何のための資料か（政策検討、事業報告、説明資料、計画資料など）
-- 主要な対象読者は誰か
-
-ステップ2: 含めるべき項目を判断する
-資料の性質に応じて、以下から適切な項目を選択してください：
-
-**基本項目（必須）:**
-- 資料の目的・概要・全体構成
-
-**内容項目（該当するもののみ）:**
-- 背景・課題・現状認識（政策検討資料の場合）
-- 主要な検討事項・論点・重点施策（政策検討資料の場合）
-- 実績・成果・評価（事業報告の場合）
-- 制度・仕組みの要点・運用方法（説明資料の場合）
-- 計画・施策・事業内容の詳細（計画資料の場合）
-
-**数値・指標項目（該当する場合は必ず含める）:**
-- 目標値・実績値・計画値
-- 予算額・規模・件数
-- スケジュール・期限
-- KPI・達成指標
-
-**結論項目（該当するもののみ）:**
-- 結論・提案・方向性（検討資料の場合）
-- 今後の予定・課題・展望（実績・計画資料の場合）
-- 重要なポイント・まとめ（説明資料の場合）
-
-ステップ3: 詳細な要約を作成する
-- 選択した項目に沿って、提供されたスライドの内容を詳しくまとめる
-- 重要な数値、固有名詞、専門用語は正確に記載する
-- 具体的な施策名、プロジェクト名、事業名なども含める
-- 推測や補完は行わず、スライドに記載された内容のみを使用
-- 複数の関連する内容は文脈を保ちながら統合して記述
+1. 資料の目的と性質を理解する（政策検討、事業報告、説明資料、計画資料など）
+2. 該当する項目を含める：目的・概要、背景・課題、検討事項・論点、実績・成果、制度・仕組み、計画・施策の詳細、数値・指標（目標値、予算額、スケジュール等）、結論・方向性
+3. スライドの内容を詳しくまとめ、重要な数値・固有名詞・専門用語は正確に記載する
 
 # 出力形式
 要約内容のみを出力してください。見出しや項目ラベルは含めないでください。
@@ -504,24 +449,21 @@ class PowerPointSummarizer:
 - 推奨: 1000-3000文字（資料の内容に応じて調整）
 - 最大: 5000文字以内
 
-スライドに含まれる重要な情報を漏らさず、詳細に記述してください。
-
 # 制約事項
-- 資料の性質に最も適した構成を選択してください
-- 該当しない項目は無理に含めないでください
-- 詳細かつ分かりやすい文章にしてください
-- 提供されたスライドの内容のみを使用してください
-- 推測や補完は行わないでください
-- 重要な数値や固有名詞は省略しないでください
+- 該当しない項目は無理に含めない
+- 重要な数値や固有名詞は省略しない
 - 資料タイトル（回数含む）は必ず含めること
-
-# 除外すべき形式的情報
-- 「〜の要約である」等の冗長な導入句
-- 「初回聴取を踏まえ」等の経緯説明
-- 資料の公開/非公開情報
-
-# 表現の改善
+- 「〜の要約である」等の冗長な導入句は使用しない
 - 「〜が確認された」→「〜する方針である」「〜とされている」等、進行報告ではなく内容記述の表現を使用
+
+# 重要：以下の<input>タグ内のみが要約対象です。上記の指示やルールは要約に含めないでください。
+
+<input>
+資料タイトル: 「{title}」
+
+選択された重要スライド:
+{content}
+</input>
             """,
         )
 
